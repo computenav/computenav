@@ -1,15 +1,15 @@
 {
   "schema_version": 1,
   "asof_date_pt": "2026-11-16",
-  "computed_at_pt": "2026-11-16T21:21:19.584406-08:00",
-  "computed_at_utc": "2026-11-17T05:21:19.584406+00:00",
+  "computed_at_pt": "2026-11-16T22:14:31.556855-08:00",
+  "computed_at_utc": "2026-11-17T06:14:31.556855+00:00",
   "run_id": "20261116T212104_PT",
   "disclaimer": {
     "zh": "高中生研究项目。指示性数据，尚无成交样本；收益法与成本法参数均为待校准占位假设，不构成正式指数，不构成投资建议。",
     "en": "High-school student research project. Indicative data only, no sold transactions yet; income/cost parameters are placeholders to be calibrated. Not an official index. Not investment advice."
   },
   "sold_count_today": 0,
-  "observation_count": 71,
+  "observation_count": 79,
   "official_observation_counts": {
     "market": 6,
     "income": 27,
@@ -135,6 +135,7 @@
       "http_status": 200,
       "observation_count": 0,
       "role": "collected",
+      "observation_only": false,
       "error": null
     },
     {
@@ -144,6 +145,7 @@
       "http_status": 200,
       "observation_count": 3,
       "role": "cross_check_only",
+      "observation_only": false,
       "error": null
     },
     {
@@ -153,6 +155,7 @@
       "http_status": 200,
       "observation_count": 12,
       "role": "collected",
+      "observation_only": false,
       "error": null
     },
     {
@@ -162,6 +165,7 @@
       "http_status": 200,
       "observation_count": 1,
       "role": "collected",
+      "observation_only": false,
       "error": null
     },
     {
@@ -171,6 +175,7 @@
       "http_status": 200,
       "observation_count": 1,
       "role": "collected",
+      "observation_only": false,
       "error": null
     },
     {
@@ -180,6 +185,7 @@
       "http_status": 200,
       "observation_count": 1,
       "role": "collected",
+      "observation_only": false,
       "error": null
     },
     {
@@ -189,6 +195,7 @@
       "http_status": 200,
       "observation_count": 1,
       "role": "cross_check_only",
+      "observation_only": false,
       "error": null
     },
     {
@@ -198,6 +205,7 @@
       "http_status": 200,
       "observation_count": 6,
       "role": "cross_check_only",
+      "observation_only": true,
       "error": null
     },
     {
@@ -207,25 +215,28 @@
       "http_status": 200,
       "observation_count": 3,
       "role": "cross_check_only",
+      "observation_only": true,
       "error": null
     },
     {
       "source_id": "vast_public_feed",
-      "ok": false,
-      "skipped": true,
-      "http_status": null,
-      "observation_count": 0,
+      "ok": true,
+      "skipped": false,
+      "http_status": 200,
+      "observation_count": 5,
       "role": "licence_restricted",
-      "error": "excluded from public basis (licence pending / no licensed access)"
+      "observation_only": true,
+      "error": null
     },
     {
       "source_id": "vast_bundles",
-      "ok": false,
-      "skipped": true,
-      "http_status": null,
-      "observation_count": 0,
+      "ok": true,
+      "skipped": false,
+      "http_status": 200,
+      "observation_count": 3,
       "role": "licence_restricted",
-      "error": "excluded from public basis (licence pending / no licensed access)"
+      "observation_only": true,
+      "error": null
     },
     {
       "source_id": "runpod",
@@ -234,6 +245,7 @@
       "http_status": 200,
       "observation_count": 11,
       "role": "collected",
+      "observation_only": false,
       "error": null
     },
     {
@@ -243,6 +255,7 @@
       "http_status": 200,
       "observation_count": 8,
       "role": "collected",
+      "observation_only": false,
       "error": null
     },
     {
@@ -252,6 +265,7 @@
       "http_status": 200,
       "observation_count": 2,
       "role": "collected",
+      "observation_only": false,
       "error": null
     },
     {
@@ -261,6 +275,7 @@
       "http_status": 200,
       "observation_count": 2,
       "role": "collected",
+      "observation_only": false,
       "error": null
     },
     {
@@ -270,6 +285,7 @@
       "http_status": 200,
       "observation_count": 2,
       "role": "collected",
+      "observation_only": false,
       "error": null
     },
     {
@@ -279,6 +295,7 @@
       "http_status": 200,
       "observation_count": 2,
       "role": "collected",
+      "observation_only": false,
       "error": null
     },
     {
@@ -288,6 +305,7 @@
       "http_status": 200,
       "observation_count": 1,
       "role": "collected",
+      "observation_only": false,
       "error": null
     },
     {
@@ -297,6 +315,7 @@
       "http_status": 200,
       "observation_count": 7,
       "role": "collected",
+      "observation_only": false,
       "error": null
     },
     {
@@ -306,6 +325,7 @@
       "http_status": 200,
       "observation_count": 3,
       "role": "collected",
+      "observation_only": false,
       "error": null
     },
     {
@@ -315,6 +335,7 @@
       "http_status": 200,
       "observation_count": 1,
       "role": "collected",
+      "observation_only": false,
       "error": null
     },
     {
@@ -324,25 +345,28 @@
       "http_status": 200,
       "observation_count": 4,
       "role": "collected",
+      "observation_only": false,
       "error": null
     },
     {
       "source_id": "ebay_sold",
       "ok": false,
-      "skipped": true,
-      "http_status": null,
+      "skipped": false,
+      "http_status": 403,
       "observation_count": 0,
       "role": "licence_restricted",
-      "error": "excluded from public basis (licence pending / no licensed access)"
+      "observation_only": true,
+      "error": "HTTPError 403 Forbidden"
     },
     {
       "source_id": "ebay_active",
       "ok": false,
-      "skipped": true,
-      "http_status": null,
+      "skipped": false,
+      "http_status": 403,
       "observation_count": 0,
       "role": "licence_restricted",
-      "error": "excluded from public basis (licence pending / no licensed access)"
+      "observation_only": true,
+      "error": "HTTPError 403 Forbidden"
     }
   ],
   "licensing": {
@@ -382,7 +406,7 @@
         "reason": "unavailable 8-GPU server listing; weight 0"
       }
     ],
-    "note_zh": "公开数据仅含按型号汇总的指示性 NAV、三法结果、样本数与中位数；不含任何单条挂牌/租金观测或分来源原始价格。Vast.ai 与 eBay 在取得数据许可前不采集、不进入计算。",
-    "note_en": "Public data contains only per-model aggregates (indicative NAV, method legs, counts, medians). No listing-level observations or per-source raw prices. Vast.ai and eBay are neither collected nor used until licensed."
+    "note_zh": "公开数据仅含按型号汇总的指示性 NAV、三法结果、样本数与中位数；不含任何单条挂牌/租金观测或分来源原始价格。按方法论第 10 节，Vast.ai、eBay、Clustermelt、Mulligan 不进入官方计算；每日 CI 不抓取 Vast.ai 与 eBay。",
+    "note_en": "Public data contains only per-model aggregates (indicative NAV, method legs, counts, medians). No listing-level observations or per-source raw prices. Per methodology section 10, Vast.ai, eBay, Clustermelt and Mulligan are excluded from the official calculation; the daily CI does not fetch Vast.ai or eBay."
   }
 }

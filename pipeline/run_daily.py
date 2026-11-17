@@ -9,20 +9,7 @@ Sold transactions are expected to be zero until licensed market-tape access
 exists. Income and cost legs use clearly labeled to-be-calibrated placeholders.
 
 Usage:
-    python3 /workspace/computenav/run_daily.py            # original box layout
-    COMPUTENAV_DATA_DIR=/tmp/cn python3 pipeline/run_daily.py   # CI / repo copy
-
-REPO COPY CHANGES (vs /workspace/computenav/run_daily.py, 2026-11-16):
-  1. ROOT is read from env COMPUTENAV_DATA_DIR (default: <repo>/.private-data,
-     which is git-ignored). All private artifacts (nav.db, snapshots/, logs/,
-     output/*.json incl. dashboard_data.json with raw observations) are written
-     there and are NEVER published. pipeline/export_public.py builds the public
-     JSON from output/latest.json.
-  2. env COMPUTENAV_SKIP_SOURCES (comma-separated source ids) skips fetching
-     those sources entirely (used in CI for licence-restricted sources such as
-     Vast.ai, whose terms require a data licence for index use, and eBay, which
-     has no licensed access). Skipped sources appear in source_health with
-     skipped=true. No other logic (parsers, formulas, assumptions) changed.
+    python3 /workspace/computenav/run_daily.py
 """
 
 from __future__ import annotations
@@ -45,8 +32,8 @@ from pathlib import Path
 from typing import Any, Optional
 from zoneinfo import ZoneInfo
 
-# [repo change 1] data dir from env; default is a git-ignored folder in the repo.
-ROOT = Path(os.environ.get("COMPUTENAV_DATA_DIR") or (Path(__file__).resolve().parent.parent / ".private-data"))
+# CI hook (no-op by default): COMPUTENAV_DATA_DIR relocates all private outputs.
+ROOT = Path(os.environ.get("COMPUTENAV_DATA_DIR") or "/workspace/computenav")
 SNAPSHOT_ROOT = ROOT / "snapshots"
 OUTPUT_DIR = ROOT / "output"
 LOG_DIR = ROOT / "logs"
@@ -97,6 +84,39 @@ ASSUMPTIONS = {
         "rule": "四只子指数的等权平均（装机量权数待校准）。子指数指示性 NAV 为当日可得的市场法/收益法/成本法的等权平均（三法权重待校准）。",
     },
 }
+
+# Fetched and archived, but never used in official M/I/C legs or the composite.
+# Methodology v0 §10: a source may enter the official calculation only if its
+# licence allows benchmark/index use. sources.csv flags zero-weight / watch-only
+# sources the same way. Do not skip the fetch: store them as observation-only.
+OBSERVATION_ONLY_SOURCES = {
+    "vast_public_feed": "方法论第 10 节：Vast.ai 公共 feed 写明用于指数/基准/衍生数据产品须向 data@vast.ai 申请许可；许可完成前不得进入官方计算，仅作研究对照。",
+    "vast_bundles": "与公共 feed 相同的 Vast.ai 数据许可限制；许可完成前仅作观察。",
+    "clustermelt": "sources.csv：v0 正式计算权重为 0，仅交叉核对。",
+    "mulligan": "sources.csv：v0 正式计算权重为 0，仅观察（第三方转述 eBay 要价，未经本管道复验）。",
+    "ebay_sold": "无许可的成交带访问；不得进入官方计算。",
+    "ebay_active": "无许可的在售搜索访问；不得进入官方计算。",
+}
+
+
+def mark_observation_only(row: dict) -> dict:
+    """Force official-leg flags off for unlicensed / watch-only sources."""
+    sid = row.get("source_id")
+    if sid not in OBSERVATION_ONLY_SOURCES:
+        return row
+    row["include_in_market"] = 0
+    row["include_in_income"] = 0
+    row["include_in_cost_new"] = 0
+    reason = OBSERVATION_ONLY_SOURCES[sid]
+    tag = "【仅观察，不进入官方计算】" + reason
+    note = row.get("notes") or ""
+    if "不进入官方计算" not in note:
+        row["notes"] = (note + " " + tag).strip()
+    return row
+
+
+def is_official(row: dict, flag: str) -> bool:
+    return bool(row.get(flag)) and row.get("source_id") not in OBSERVATION_ONLY_SOURCES
 
 MODEL_KEYS = ["H100_SXM", "H100_PCIe", "A100_80GB", "A100_40GB"]
 MODEL_LABELS = {
@@ -611,7 +631,7 @@ def parse_vast_feed(rec, fx):
         if med is None:
             continue
         vram_use = vram if vram is not None else g.get("vram_gb")
-        note = f"Vast 公共 feed 中位数，更新 {updated}；可租数量={cur.get('available') or g.get('available')}。用于指数须向 data@vast.ai 申请许可；此处仅作收益法研究输入并已标注。"
+        note = f"Vast 公共 feed 中位数，更新 {updated}；可租数量={cur.get('available') or g.get('available')}。用于指数须向 data@vast.ai 申请许可；许可完成前仅作观察，不进入官方收益法。"
         if key == "a100 sxm4":
             note += " feed 标 80GB，但 bundles 中部分 offer 为 40GB，故不纳入官方收益法中位数。"
             include = False
@@ -623,7 +643,7 @@ def parse_vast_feed(rec, fx):
             observation_type="rental_stats", sold_vs_listed="rental_list",
             model=model, form_factor=form, vram_gb=vram_use, currency="USD",
             price=float(med), unit="per_gpu_hour", notes=note,
-            include_in_income=1 if include else 0, model_key=mkey,
+            include_in_income=0, model_key=mkey,
             raw_label=f"Vast feed median {key} ${float(med):.4f}/hr n={cur.get('available')}",
         ), fx))
     return out
@@ -671,8 +691,8 @@ def parse_vast_bundles(rec, fx):
             observation_type="rental_offer", sold_vs_listed="rental_list",
             model=model, form_factor=form, vram_gb=vram, currency="USD",
             price=per, unit="per_gpu_hour",
-            notes=f"offer_id={o.get('id')}; num_gpus={n_gpu}; dph_total={dph}; loc={loc}。用于指数须许可。",
-            include_in_income=1 if form != "NVL" else 0,
+            notes=f"offer_id={o.get('id')}; num_gpus={n_gpu}; dph_total={dph}; loc={loc}。用于指数须向 data@vast.ai 申请许可；许可完成前仅作观察，不进入官方收益法。",
+            include_in_income=0,
             raw_label=f"Vast offer {name} {vram}GB ${per:.4f}/hr ({loc})",
         )), fx))
     return out
@@ -1002,11 +1022,11 @@ def compute_index(observations, asof_date_pt, computed_at_utc, computed_at_pt):
     per_model = {}
     for key in MODEL_KEYS:
         mkt = [o["usd_per_card"] for o in observations
-               if o.get("include_in_market") and o.get("model_key") == key and o.get("usd_per_card")]
+               if is_official(o, "include_in_market") and o.get("model_key") == key and o.get("usd_per_card")]
         inc_r = [o["usd_per_gpu_hour"] for o in observations
-                 if o.get("include_in_income") and o.get("model_key") == key and o.get("usd_per_gpu_hour")]
+                 if is_official(o, "include_in_income") and o.get("model_key") == key and o.get("usd_per_gpu_hour")]
         newp = [o["usd_per_card"] for o in observations
-                if o.get("include_in_cost_new") and o.get("model_key") == key and o.get("usd_per_card")]
+                if is_official(o, "include_in_cost_new") and o.get("model_key") == key and o.get("usd_per_card")]
         market = median(mkt)
         r_med = median(inc_r)
         income = income_dcf(r_med) if r_med is not None else None
@@ -1138,10 +1158,15 @@ def write_outputs(conn, run_id, asof_date_pt, computed_at_pt, computed_at_utc, h
         "source_health": health,
         "observation_count": len(observations),
         "official_observation_counts": {
-            "market": sum(1 for o in observations if o.get("include_in_market")),
-            "income": sum(1 for o in observations if o.get("include_in_income")),
-            "cost_new": sum(1 for o in observations if o.get("include_in_cost_new")),
+            "market": sum(1 for o in observations if is_official(o, "include_in_market")),
+            "income": sum(1 for o in observations if is_official(o, "include_in_income")),
+            "cost_new": sum(1 for o in observations if is_official(o, "include_in_cost_new")),
         },
+        "observation_only_sources": [
+            {"source_id": sid, "reason": reason}
+            for sid, reason in OBSERVATION_ONLY_SOURCES.items()
+        ],
+        "observation_only_count": sum(1 for o in observations if o.get("source_id") in OBSERVATION_ONLY_SOURCES),
     }
     for r in index_rows:
         item = {
@@ -1253,19 +1278,15 @@ def run():
     observations = []
     health = []
 
-    # [repo change 2] optional skip list (licence-restricted sources in CI).
+    # CI hook (no-op by default): COMPUTENAV_SKIP_SOURCES=id1,id2 skips those fetches.
     skip = {x.strip() for x in os.environ.get("COMPUTENAV_SKIP_SOURCES", "").split(",") if x.strip()}
-    if skip:
-        log.info("skipping sources via COMPUTENAV_SKIP_SOURCES: %s", sorted(skip))
-
     for src in SOURCE_PLAN:
         sid = src["id"]
         if sid in skip:
-            health.append({
-                "source_id": sid, "url": src["url"], "ok": False, "skipped": True,
-                "http_status": None, "error": "skipped (COMPUTENAV_SKIP_SOURCES; licence pending / no licensed access)",
-                "observation_count": 0, "fetched_at_utc": None, "sha256": None,
-            })
+            log.info("%s skipped via COMPUTENAV_SKIP_SOURCES", sid)
+            health.append({"source_id": sid, "url": src["url"], "ok": False, "skipped": True,
+                           "http_status": None, "error": "skipped (COMPUTENAV_SKIP_SOURCES)",
+                           "observation_count": 0, "fetched_at_utc": None, "sha256": None})
             continue
         rec = {
             "source_id": sid, "url": src["url"], "method": src.get("method", "GET"),
@@ -1307,6 +1328,7 @@ def run():
                         row["asof_date_pt"] = asof_date_pt
                         if not row.get("source_id"):
                             row["source_id"] = sid
+                        mark_observation_only(row)
                     insert_observations(conn, rows)
                     observations.extend(rows)
                     n_obs = len(rows)
@@ -1356,5 +1378,126 @@ def run():
     return 0
 
 
+
+def _fx_from_observations(observations: list[dict]) -> FX:
+    fx = FX()
+    for o in observations:
+        if o.get("fx_source"):
+            fx.source = o.get("fx_source")
+            fx.asof_utc = o.get("fx_asof_utc")
+            break
+    # Recover USD-per-unit from stored observation FX columns.
+    for o in observations:
+        ccy = (o.get("currency") or "").upper()
+        rate = o.get("fx_usd_per_unit")
+        if ccy and rate:
+            fx.usd_per[ccy] = float(rate)
+    fx.usd_per["USD"] = 1.0
+    if fx.usd_per.get("EUR"):
+        fx.raw_rates["EUR"] = 1.0 / fx.usd_per["EUR"]
+    if fx.usd_per.get("GBP"):
+        fx.raw_rates["GBP"] = 1.0 / fx.usd_per["GBP"]
+    return fx
+
+
+def recompute_from_run(run_id: str) -> int:
+    """Recompute official index from a stored run (no new fetch).
+
+    Used when official-inclusion rules change: snapshots stay append-only,
+    observation-only flags are corrected, daily_index is upserted for that
+    as-of date, and JSON outputs are rewritten.
+    """
+    LOG_DIR.mkdir(parents=True, exist_ok=True)
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    computed = now_utc()
+    computed_pt = to_pt(computed)
+    log_path = LOG_DIR / f"{run_id}_recompute_{computed_pt.strftime('%Y%m%dT%H%M%S')}_PT.log"
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(message)s",
+        handlers=[logging.FileHandler(log_path, encoding="utf-8"), logging.StreamHandler(sys.stdout)],
+    )
+    conn = connect_db()
+    raw_rows = [dict(r) for r in conn.execute(
+        "SELECT * FROM observations WHERE run_id=? ORDER BY id", (run_id,)
+    ).fetchall()]
+    if not raw_rows:
+        log.error("no observations for run_id=%s", run_id)
+        return 2
+    asof_date_pt = raw_rows[0]["asof_date_pt"]
+    corrected = 0
+    for row in raw_rows:
+        before = (row.get("include_in_market"), row.get("include_in_income"), row.get("include_in_cost_new"))
+        mark_observation_only(row)
+        after = (row.get("include_in_market"), row.get("include_in_income"), row.get("include_in_cost_new"), row.get("notes"))
+        if before != after[:3] or (row.get("source_id") in OBSERVATION_ONLY_SOURCES):
+            conn.execute(
+                "UPDATE observations SET include_in_market=?, include_in_income=?, "
+                "include_in_cost_new=?, notes=? WHERE id=?",
+                (row["include_in_market"], row["include_in_income"], row["include_in_cost_new"],
+                 row.get("notes"), row["id"]),
+            )
+            if before != after[:3]:
+                corrected += 1
+    conn.commit()
+    log.info("recompute run_id=%s asof=%s; corrected official flags on %s rows", run_id, asof_date_pt, corrected)
+
+    health_rows = [dict(r) for r in conn.execute(
+        "SELECT source_id, url, ok, http_status, error, observation_count, fetched_at_utc "
+        "FROM source_health WHERE run_id=? ORDER BY id", (run_id,)
+    ).fetchall()]
+    health = []
+    for h in health_rows:
+        item = {
+            "source_id": h["source_id"], "url": h["url"], "ok": bool(h["ok"]),
+            "http_status": h["http_status"], "error": h["error"],
+            "observation_count": h["observation_count"], "fetched_at_utc": h["fetched_at_utc"],
+        }
+        if h["source_id"] in OBSERVATION_ONLY_SOURCES:
+            item["observation_only"] = True
+            item["observation_only_reason"] = OBSERVATION_ONLY_SOURCES[h["source_id"]]
+        health.append(item)
+
+    fx = _fx_from_observations(raw_rows)
+    # Prefer the archived FX snapshot if present.
+    fx_snap = SNAPSHOT_ROOT / run_id / "fx_usd.bin"
+    if fx_snap.exists():
+        try:
+            rec = {
+                "ok": True, "body": fx_snap.read_bytes(),
+                "fetched_at_utc": fx.asof_utc or iso(computed),
+            }
+            fx.load(rec)
+        except Exception:
+            log.exception("could not reload FX snapshot; using rates stored on observations")
+
+    index_rows = compute_index(raw_rows, asof_date_pt, iso(computed), iso(computed_pt))
+    upsert_index(conn, index_rows)
+    conn.commit()
+    latest, history, dashboard = write_outputs(
+        conn, run_id, asof_date_pt, iso(computed_pt), iso(computed), health, raw_rows, index_rows, fx
+    )
+    conn.close()
+    log.info("sold_count=%s observations=%s official=%s", latest["sold_count_today"],
+             latest["observation_count"], latest["official_observation_counts"])
+    for k, v in latest["models"].items():
+        log.info("NAV %s: indicative=%s market=%s income=%s cost=%s", k,
+                 v["nav_indicative_usd"], v["market_usd"], v["income_usd"], v["cost_usd"])
+    if latest["composite"]:
+        log.info("COMPOSITE=%s", latest["composite"]["nav_indicative_usd"])
+    log.info("wrote %s %s %s", LATEST_PATH, HISTORY_PATH, DASHBOARD_DATA_PATH)
+    return 0
+
+
 if __name__ == "__main__":
+    import argparse
+    parser = argparse.ArgumentParser(description="ComputeNAV v0 daily pipeline")
+    parser.add_argument(
+        "--recompute-from-run",
+        metavar="RUN_ID",
+        help="Recompute official NAV from a stored run (no fetch). Snapshots stay append-only.",
+    )
+    args = parser.parse_args()
+    if args.recompute_from_run:
+        sys.exit(recompute_from_run(args.recompute_from_run))
     sys.exit(run())

@@ -185,7 +185,7 @@
       h.map(function (s) {
         var st = s.skipped ? "<span class='skip'>跳过 skipped</span>" : s.ok ? "<span class='ok'>成功 ok</span>" : "<span class='bad'>失败 failed</span>";
         return "<tr><td>" + esc(s.source_id) + "</td><td>" + st + "</td><td class='num'>" + int(s.http_status) + "</td><td class='num'>" + int(s.observation_count) +
-          "</td><td>" + esc(roleMap[s.role] || s.role || DASH) + "</td><td>" + esc(s.error || DASH) + "</td></tr>";
+          "</td><td>" + esc(roleMap[s.role] || s.role || DASH) + (s.observation_only ? "（仅观察，不进入官方计算 / observation only）" : "") + "</td><td>" + esc(s.error || DASH) + "</td></tr>";
       }).join("") + "</tbody>";
   }
 

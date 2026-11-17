@@ -11,7 +11,11 @@ Rules (see README "数据许可 / Data licensing"):
     snapshot hashes/paths, NO breakdown.values_usd (those are per-listing prices).
   * Sources listed in LICENCE_RESTRICTED must not contribute to a published
     value. If latest.json shows they contributed observations (i.e. they were
-    not skipped), the export aborts instead of publishing.
+    not skipped), the export aborts instead of publishing. The only exception
+    is --allow-observation-only (used for seeding from the box DB, where these
+    sources were fetched): then each such source must be marked
+    observation_only=true by run_daily.py (methodology §10, excluded from the
+    official legs), otherwise the export still aborts.
   * history.json is the long-term public record: it is read from the repo,
     today's point is upserted (keyed by asof_date_pt), and it is written back.
     nav.db is NOT needed for continuity.
@@ -61,12 +65,14 @@ def _short(s, n=160):
     return s[:n]
 
 
-def build_latest(priv: dict) -> dict:
+def build_latest(priv: dict, allow_observation_only: bool = False) -> dict:
     health = priv.get("source_health") or []
     # Guard: restricted sources must not have contributed observations.
     for h in health:
         sid = h.get("source_id")
         if sid in LICENCE_RESTRICTED and (h.get("observation_count") or 0) > 0:
+            if allow_observation_only and h.get("observation_only") is True:
+                continue
             raise SystemExit(
                 f"REFUSING TO PUBLISH: licence-restricted source '{sid}' contributed "
                 f"{h.get('observation_count')} observations. Run with COMPUTENAV_SKIP_SOURCES "
@@ -111,6 +117,7 @@ def build_latest(priv: dict) -> dict:
             "http_status": h.get("http_status"),
             "observation_count": h.get("observation_count") or 0,
             "role": role,
+            "observation_only": bool(h.get("observation_only")),
             "error": _short(h.get("error")),
         })
 
@@ -148,8 +155,8 @@ def build_latest(priv: dict) -> dict:
             "cross_check_only_not_published": [
                 {"source_id": k, "reason": v} for k, v in CROSS_CHECK_ONLY.items()
             ],
-            "note_zh": "公开数据仅含按型号汇总的指示性 NAV、三法结果、样本数与中位数；不含任何单条挂牌/租金观测或分来源原始价格。Vast.ai 与 eBay 在取得数据许可前不采集、不进入计算。",
-            "note_en": "Public data contains only per-model aggregates (indicative NAV, method legs, counts, medians). No listing-level observations or per-source raw prices. Vast.ai and eBay are neither collected nor used until licensed.",
+            "note_zh": "公开数据仅含按型号汇总的指示性 NAV、三法结果、样本数与中位数；不含任何单条挂牌/租金观测或分来源原始价格。按方法论第 10 节，Vast.ai、eBay、Clustermelt、Mulligan 不进入官方计算；每日 CI 不抓取 Vast.ai 与 eBay。",
+            "note_en": "Public data contains only per-model aggregates (indicative NAV, method legs, counts, medians). No listing-level observations or per-source raw prices. Per methodology section 10, Vast.ai, eBay, Clustermelt and Mulligan are excluded from the official calculation; the daily CI does not fetch Vast.ai or eBay.",
         },
     }
 
@@ -203,11 +210,13 @@ def assert_clean(obj, where="root"):
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--private-latest", required=True, help="path to private output/latest.json")
+    ap.add_argument("--allow-observation-only", action="store_true",
+                    help="seeding only: accept restricted sources that run_daily.py marked observation_only")
     ap.add_argument("--public-dir", default=str(Path(__file__).resolve().parent.parent / "docs" / "data"))
     a = ap.parse_args(argv)
 
     priv = json.loads(Path(a.private_latest).read_text())
-    pub = build_latest(priv)
+    pub = build_latest(priv, a.allow_observation_only)
     if all(pub["models"][k] is None or pub["models"][k]["nav_indicative_usd"] is None for k in MODEL_KEYS):
         raise SystemExit("no model produced an indicative NAV today; not publishing")
     out = Path(a.public_dir)
