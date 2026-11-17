@@ -1,0 +1,32 @@
+# ---- Private / licence-restricted data: NEVER commit or publish ----
+.private-data/
+nav.db
+*.db
+*.sqlite
+*.sqlite3
+snapshots/
+raw/
+samples/
+logs/
+*.log
+output/
+dashboard_data.json
+*observations*.json
+*observations*.csv
+captured_prices_*.csv
+sources.csv
+*.bin
+*.meta.json
+
+# ---- Local env / secrets ----
+.env
+.env.*
+*.pem
+*.key
+
+# ---- Python / OS ----
+__pycache__/
+*.pyc
+.venv/
+venv/
+.DS_Store

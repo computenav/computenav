@@ -1,0 +1,388 @@
+{
+  "schema_version": 1,
+  "asof_date_pt": "2026-11-16",
+  "computed_at_pt": "2026-11-16T21:21:19.584406-08:00",
+  "computed_at_utc": "2026-11-17T05:21:19.584406+00:00",
+  "run_id": "20261116T212104_PT",
+  "disclaimer": {
+    "zh": "高中生研究项目。指示性数据，尚无成交样本；收益法与成本法参数均为待校准占位假设，不构成正式指数，不构成投资建议。",
+    "en": "High-school student research project. Indicative data only, no sold transactions yet; income/cost parameters are placeholders to be calibrated. Not an official index. Not investment advice."
+  },
+  "sold_count_today": 0,
+  "observation_count": 71,
+  "official_observation_counts": {
+    "market": 6,
+    "income": 27,
+    "cost_new": 4
+  },
+  "fx": {
+    "source": "https://www.exchangerate-api.com (https://www.exchangerate-api.com/docs/free)",
+    "asof_utc": "Tue, 17 Nov 2026 00:02:31 +0000",
+    "usd_per_eur": 1.1006,
+    "usd_per_gbp": 1.3188
+  },
+  "assumptions": {
+    "status": "to-be-calibrated",
+    "disclaimer_zh": "以下参数均为占位假设，未经指数委员会校准，不构成正式方法论参数。",
+    "income": {
+      "remaining_life_years": 4,
+      "remaining_life_note": "占位：剩余经济寿命 4 年。CoreWeave 会计寿命为 6 年、IREN 质押 GPU 为 5 年，均只作参照，不等于本参数。",
+      "utilization": 0.5,
+      "utilization_note": "占位：利用率 50%，不得理解为已校准的市场利用率。",
+      "opex_ratio": 0.25,
+      "opex_note": "占位：运营成本（电费、机架、运维）按毛租金收入的 25% 扣除，未经电价或机柜成本实证。",
+      "discount_rate_annual": 0.1,
+      "discount_note": "占位：年折现率 10%。",
+      "terminal_value": 0.0,
+      "terminal_note": "占位：期末残值为 0，寿命期末不再另计 TV。",
+      "hours_per_year": 8760,
+      "rental_rate_rule": "取当日纳入收益法的按需/价目租金（USD/GPU-hour）的中位数；预留、现货、期限不明确的观察以及形态无法归属的观察不进入中位数。"
+    },
+    "cost": {
+      "book_life_years_anchor": 5,
+      "book_life_note": "占位：直线折旧年限取 IREN 质押 GPU 会计寿命 5 年作情景锚点（CoreWeave 计算设备为 6 年）。官方寿命待校准。",
+      "unknown_age_remaining_fraction": 0.5,
+      "age_note": "占位：二手观察普遍缺失机龄，成本法按「5 年直线、未知机龄取中点」使用 50% 剩余价值系数。不是已校准的残值曲线。",
+      "new_price_source": "优先使用 Genius HPC 同页 New From（欧元未税经销商起价），不是 NVIDIA MSRP，也不是美国渠道价。"
+    },
+    "market": {
+      "sold_weight": "n/a (sold=0)",
+      "listing_rule": "仅使用可解析的经销商挂牌（Genius HPC 在售、Creative Compute 询价）。AnchorGPU（未开放下单）、第三方汇总（Clustermelt/Mulligan）、不可售整机、以及未扣除主机部件的整机简单除法，不进入官方市场法中位数。",
+      "aggregator": "unweighted median (weights to-be-calibrated)"
+    },
+    "composite": {
+      "rule": "四只子指数的等权平均（装机量权数待校准）。子指数指示性 NAV 为当日可得的市场法/收益法/成本法的等权平均（三法权重待校准）。"
+    }
+  },
+  "composite": {
+    "label": "综合（等权，待校准）",
+    "label_en": "Composite (equal-weight, to be calibrated)",
+    "nav_indicative_usd": 16727.92,
+    "n_models": 4,
+    "quality_flag": "equal_weight_of_four_models;installed_base_weights=to-be-calibrated;sold_n=0"
+  },
+  "models": {
+    "H100_SXM": {
+      "model_key": "H100_SXM",
+      "label": "H100 SXM",
+      "label_en": "H100 SXM",
+      "nav_indicative_usd": 20216.27,
+      "market_usd": 11390.03,
+      "income_usd": 41123.05,
+      "cost_usd": 8135.74,
+      "market_n": 1,
+      "income_n": 11,
+      "cost_n": 1,
+      "legs_used": 3,
+      "rental_median_usd_per_hour": 3.9492,
+      "new_card_usd": 16271.47,
+      "quality_flag": "sold_n=0;income_assumptions=to-be-calibrated;cost_age_fraction=to-be-calibrated"
+    },
+    "H100_PCIe": {
+      "model_key": "H100_PCIe",
+      "label": "H100 PCIe",
+      "label_en": "H100 PCIe",
+      "nav_indicative_usd": 17037.79,
+      "market_usd": 16436.64,
+      "income_usd": 26032.52,
+      "cost_usd": 8644.22,
+      "market_n": 2,
+      "income_n": 3,
+      "cost_n": 1,
+      "legs_used": 3,
+      "rental_median_usd_per_hour": 2.5,
+      "new_card_usd": 17288.44,
+      "quality_flag": "sold_n=0;income_assumptions=to-be-calibrated;cost_age_fraction=to-be-calibrated"
+    },
+    "A100_80GB": {
+      "model_key": "A100_80GB",
+      "label": "A100 80GB",
+      "label_en": "A100 80GB",
+      "nav_indicative_usd": 8935.75,
+      "market_usd": 7474.71,
+      "income_usd": 14578.21,
+      "cost_usd": 4754.32,
+      "market_n": 3,
+      "income_n": 9,
+      "cost_n": 2,
+      "legs_used": 3,
+      "rental_median_usd_per_hour": 1.4,
+      "new_card_usd": 9508.64,
+      "quality_flag": "sold_n=0;income_assumptions=to-be-calibrated;cost_age_fraction=to-be-calibrated"
+    },
+    "A100_40GB": {
+      "model_key": "A100_40GB",
+      "label": "A100 40GB",
+      "label_en": "A100 40GB",
+      "nav_indicative_usd": 20721.89,
+      "market_usd": null,
+      "income_usd": 20721.89,
+      "cost_usd": null,
+      "market_n": 0,
+      "income_n": 4,
+      "cost_n": 0,
+      "legs_used": 1,
+      "rental_median_usd_per_hour": 1.99,
+      "new_card_usd": null,
+      "quality_flag": "no_official_listings;sold_n=0;no_new_card_anchor;income_assumptions=to-be-calibrated;cost_age_fraction=to-be-calibrated"
+    }
+  },
+  "source_health": [
+    {
+      "source_id": "fx_usd",
+      "ok": true,
+      "skipped": false,
+      "http_status": 200,
+      "observation_count": 0,
+      "role": "collected",
+      "error": null
+    },
+    {
+      "source_id": "anchorgpu",
+      "ok": true,
+      "skipped": false,
+      "http_status": 200,
+      "observation_count": 3,
+      "role": "cross_check_only",
+      "error": null
+    },
+    {
+      "source_id": "geniushpc",
+      "ok": true,
+      "skipped": false,
+      "http_status": 200,
+      "observation_count": 12,
+      "role": "collected",
+      "error": null
+    },
+    {
+      "source_id": "creative_h100",
+      "ok": true,
+      "skipped": false,
+      "http_status": 200,
+      "observation_count": 1,
+      "role": "collected",
+      "error": null
+    },
+    {
+      "source_id": "creative_a100",
+      "ok": true,
+      "skipped": false,
+      "http_status": 200,
+      "observation_count": 1,
+      "role": "collected",
+      "error": null
+    },
+    {
+      "source_id": "creative_8xa100",
+      "ok": true,
+      "skipped": false,
+      "http_status": 200,
+      "observation_count": 1,
+      "role": "collected",
+      "error": null
+    },
+    {
+      "source_id": "serverpartdeals",
+      "ok": true,
+      "skipped": false,
+      "http_status": 200,
+      "observation_count": 1,
+      "role": "cross_check_only",
+      "error": null
+    },
+    {
+      "source_id": "clustermelt",
+      "ok": true,
+      "skipped": false,
+      "http_status": 200,
+      "observation_count": 6,
+      "role": "cross_check_only",
+      "error": null
+    },
+    {
+      "source_id": "mulligan",
+      "ok": true,
+      "skipped": false,
+      "http_status": 200,
+      "observation_count": 3,
+      "role": "cross_check_only",
+      "error": null
+    },
+    {
+      "source_id": "vast_public_feed",
+      "ok": false,
+      "skipped": true,
+      "http_status": null,
+      "observation_count": 0,
+      "role": "licence_restricted",
+      "error": "excluded from public basis (licence pending / no licensed access)"
+    },
+    {
+      "source_id": "vast_bundles",
+      "ok": false,
+      "skipped": true,
+      "http_status": null,
+      "observation_count": 0,
+      "role": "licence_restricted",
+      "error": "excluded from public basis (licence pending / no licensed access)"
+    },
+    {
+      "source_id": "runpod",
+      "ok": true,
+      "skipped": false,
+      "http_status": 200,
+      "observation_count": 11,
+      "role": "collected",
+      "error": null
+    },
+    {
+      "source_id": "lambda",
+      "ok": true,
+      "skipped": false,
+      "http_status": 200,
+      "observation_count": 8,
+      "role": "collected",
+      "error": null
+    },
+    {
+      "source_id": "digitalocean",
+      "ok": true,
+      "skipped": false,
+      "http_status": 200,
+      "observation_count": 2,
+      "role": "collected",
+      "error": null
+    },
+    {
+      "source_id": "coreweave",
+      "ok": true,
+      "skipped": false,
+      "http_status": 200,
+      "observation_count": 2,
+      "role": "collected",
+      "error": null
+    },
+    {
+      "source_id": "crusoe",
+      "ok": true,
+      "skipped": false,
+      "http_status": 200,
+      "observation_count": 2,
+      "role": "collected",
+      "error": null
+    },
+    {
+      "source_id": "nebius",
+      "ok": true,
+      "skipped": false,
+      "http_status": 200,
+      "observation_count": 2,
+      "role": "collected",
+      "error": null
+    },
+    {
+      "source_id": "together",
+      "ok": true,
+      "skipped": false,
+      "http_status": 200,
+      "observation_count": 1,
+      "role": "collected",
+      "error": null
+    },
+    {
+      "source_id": "hyperstack",
+      "ok": true,
+      "skipped": false,
+      "http_status": 200,
+      "observation_count": 7,
+      "role": "collected",
+      "error": null
+    },
+    {
+      "source_id": "modal",
+      "ok": true,
+      "skipped": false,
+      "http_status": 200,
+      "observation_count": 3,
+      "role": "collected",
+      "error": null
+    },
+    {
+      "source_id": "voltagepark",
+      "ok": true,
+      "skipped": false,
+      "http_status": 200,
+      "observation_count": 1,
+      "role": "collected",
+      "error": null
+    },
+    {
+      "source_id": "massedcompute",
+      "ok": true,
+      "skipped": false,
+      "http_status": 200,
+      "observation_count": 4,
+      "role": "collected",
+      "error": null
+    },
+    {
+      "source_id": "ebay_sold",
+      "ok": false,
+      "skipped": true,
+      "http_status": null,
+      "observation_count": 0,
+      "role": "licence_restricted",
+      "error": "excluded from public basis (licence pending / no licensed access)"
+    },
+    {
+      "source_id": "ebay_active",
+      "ok": false,
+      "skipped": true,
+      "http_status": null,
+      "observation_count": 0,
+      "role": "licence_restricted",
+      "error": "excluded from public basis (licence pending / no licensed access)"
+    }
+  ],
+  "licensing": {
+    "excluded_from_index": [
+      {
+        "source_id": "vast_public_feed",
+        "reason": "Vast.ai: 'use in any index, benchmark, or derivative product requires a data license' (data@vast.ai)"
+      },
+      {
+        "source_id": "vast_bundles",
+        "reason": "Vast.ai: same data-licence requirement as the public feed"
+      },
+      {
+        "source_id": "ebay_sold",
+        "reason": "eBay: no licensed API access; ToS restricts scraping / reuse of sold comps"
+      },
+      {
+        "source_id": "ebay_active",
+        "reason": "eBay: no licensed API access; ToS restricts scraping"
+      }
+    ],
+    "cross_check_only_not_published": [
+      {
+        "source_id": "clustermelt",
+        "reason": "third-party compilation; redistribution/index use may need permission; weight 0"
+      },
+      {
+        "source_id": "mulligan",
+        "reason": "derived from eBay listings; inherits eBay terms; weight 0"
+      },
+      {
+        "source_id": "anchorgpu",
+        "reason": "orders not open; reference only; weight 0"
+      },
+      {
+        "source_id": "serverpartdeals",
+        "reason": "unavailable 8-GPU server listing; weight 0"
+      }
+    ],
+    "note_zh": "公开数据仅含按型号汇总的指示性 NAV、三法结果、样本数与中位数；不含任何单条挂牌/租金观测或分来源原始价格。Vast.ai 与 eBay 在取得数据许可前不采集、不进入计算。",
+    "note_en": "Public data contains only per-model aggregates (indicative NAV, method legs, counts, medians). No listing-level observations or per-source raw prices. Vast.ai and eBay are neither collected nor used until licensed."
+  }
+}

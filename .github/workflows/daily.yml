@@ -1,0 +1,113 @@
+# ComputeNAV daily update + GitHub Pages deploy.
+#
+# Schedule: 12:30 UTC daily = 04:30 PST (Nov–Mar) / 05:30 PDT (Mar–Nov).
+#   Runs before the 07:00 PT health check; GitHub may start scheduled jobs late
+#   (often 5–30 min, occasionally more). The index date (asof_date_pt) is the PT
+#   calendar date at run time, so an early-morning PT run stamps "today".
+#
+# Privacy / licensing:
+#   * All private artifacts (nav.db, snapshots/, logs/, dashboard_data.json with
+#     listing-level observations) are written to $RUNNER_TEMP and discarded when
+#     the job ends. They are NOT committed, NOT uploaded as artifacts and NOT
+#     cached (caches/artifacts of a public repo are readable by others).
+#   * Licence-restricted sources are skipped entirely (COMPUTENAV_SKIP_SOURCES).
+#   * Only docs/data/latest.json and docs/data/history.json (aggregates) are
+#     committed back and published. export_public.py refuses to publish if a
+#     restricted source contributed observations.
+#   * History continuity: docs/data/history.json in the repo is the long-term
+#     record; each run upserts today's point into it. nav.db is rebuilt fresh
+#     every run and is not needed for history.
+name: daily
+
+on:
+  schedule:
+    - cron: "30 12 * * *"
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "docs/**"
+      - "!docs/data/**"
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: computenav-daily
+  cancel-in-progress: false
+
+env:
+  COMPUTENAV_SKIP_SOURCES: vast_public_feed,vast_bundles,ebay_sold,ebay_active
+  TZ: America/Los_Angeles
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run daily pipeline (private data stays in RUNNER_TEMP)
+        if: github.event_name != 'push'
+        env:
+          COMPUTENAV_DATA_DIR: ${{ runner.temp }}/computenav-private
+        run: python pipeline/run_daily.py
+
+      - name: Export public aggregated JSON
+        if: github.event_name != 'push'
+        run: >
+          python pipeline/export_public.py
+          --private-latest "${{ runner.temp }}/computenav-private/output/latest.json"
+          --public-dir docs/data
+
+      - name: Render methodology page
+        run: python pipeline/render_methodology.py
+
+      - name: Verify nothing private is in the site folder
+        run: |
+          set -e
+          if find docs \( -name '*.db' -o -name '*.bin' -o -name 'dashboard_data.json' \) | grep -q .; then
+            echo "private file found under docs/"; exit 1
+          fi
+          python -c "import json; [json.load(open(f)) for f in ('docs/data/latest.json','docs/data/history.json')]"
+
+      - name: Commit updated public JSON
+        if: github.event_name != 'push'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/data/latest.json docs/data/history.json docs/methodology.html
+          if git diff --cached --quiet; then
+            echo "no changes"
+          else
+            git commit -m "data: daily update $(date +%Y-%m-%d) PT"
+            git pull --rebase origin main
+            git push origin HEAD:main
+          fi
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs
+
+  deploy:
+    needs: update
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

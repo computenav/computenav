@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="zh-Hans">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ComputeNAV 指数看板 · GPU NAV Index Dashboard</title>
+<meta name="description" content="ComputeNAV: indicative NAV for used H100/A100 GPUs. High-school student research project. Indicative data only. Not investment advice.">
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<header class="banner" role="note" aria-label="Disclaimer">
+  <div class="banner-row">
+    <span class="pill">高中生研究项目 · High-school student research project</span>
+    <span class="pill">指示性数据 · Indicative data only</span>
+    <span class="pill">不构成投资建议 · Not investment advice</span>
+  </div>
+  <p class="banner-text">尚无成交样本；收益法与成本法参数均为待校准占位假设，不构成正式指数。
+    <span class="en">No sold transactions yet; income/cost parameters are uncalibrated placeholders. Not an official index.</span></p>
+</header>
+
+<main>
+  <h1>ComputeNAV 指数看板 <small>GPU NAV Index Dashboard</small></h1>
+  <p class="lede">指示性清算基准（OLV）NAV 日报，覆盖 H100 SXM / H100 PCIe / A100 80GB / A100 40GB，市场法 · 收益法 · 成本法三法等权。
+    <span class="en">Daily indicative orderly-liquidation NAV (USD per card) for four GPU models, equal-weighting market, income and cost approaches.</span></p>
+
+  <div id="error" class="error" hidden></div>
+
+  <section>
+    <dl id="props" class="props"></dl>
+  </section>
+
+  <section>
+    <h2>指示性 NAV（美元/卡） <small>Indicative NAV (USD / card)</small></h2>
+    <div id="metrics" class="metrics"></div>
+  </section>
+
+  <section>
+    <h2>三法分解（按型号） <small>Breakdown by method</small></h2>
+    <div class="table-wrap"><table id="breakdown"></table></div>
+    <p class="note">“—”表示当日该项无可用数据（不是 0）。 <span class="en">“—” = no data that day (not zero).</span></p>
+  </section>
+
+  <section>
+    <h2>历史走势 <small>History</small></h2>
+    <div id="chart" class="chart"></div>
+    <div id="legend" class="legend"></div>
+  </section>
+
+  <section>
+    <h2>占位假设（待校准） <small>Placeholder assumptions (to be calibrated)</small></h2>
+    <div id="assumptions" class="callout"></div>
+  </section>
+
+  <section>
+    <h2>源健康 <small>Source health</small></h2>
+    <p id="health-caption" class="note"></p>
+    <div class="table-wrap"><table id="health"></table></div>
+  </section>
+
+  <section>
+    <h2>数据许可 <small>Data licensing</small></h2>
+    <div id="licensing" class="callout"></div>
+  </section>
+
+  <section>
+    <h2>方法论 <small>Methodology</small></h2>
+    <p><a href="methodology.html">ComputeNAV 方法论 v0（中文）</a> · <a href="methodology.md">Markdown 源文件</a> ·
+      数据文件 / data files: <a href="data/latest.json">latest.json</a>, <a href="data/history.json">history.json</a></p>
+  </section>
+</main>
+
+<footer>
+  <p>ComputeNAV — 高中生研究项目，仅供学习研究。指示性数据，不构成投资建议，不对准确性作任何保证。
+    <span class="en">High-school student research project for learning purposes. Indicative data, not investment advice, no warranty of accuracy.</span></p>
+</footer>
+<script src="assets/app.js"></script>
+</body>
+</html>
