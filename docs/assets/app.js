@@ -31,7 +31,7 @@
       hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false, timeZoneName: "short"
     }).formatToParts(d).reduce(function (a, x) { a[x.type] = x.value; return a; }, {});
     var hh = p.hour === "24" ? "00" : p.hour;
-    return p.year + "-" + p.month + "-" + p.day + " " + hh + ":" + p.minute + ":" + p.second + " " + (p.timeZoneName || "PT") + " (America/Los_Angeles)";
+    return p.year + "-" + p.month + "-" + p.day + " " + hh + ":" + p.minute + ":" + p.second + " " + (p.timeZoneName || "PT") + " (Silicon Valley time)";
   }
   function $(id) { return document.getElementById(id); }
   function hiddenHTML() { return "Hidden"; }
