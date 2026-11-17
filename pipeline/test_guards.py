@@ -24,29 +24,55 @@ DATA = HERE.parent / "docs" / "data"
 
 
 class DenylistTests(unittest.TestCase):
+    def test_pipeline_is_verbatim_upstream_with_guard(self):
+        self.assertTrue(hasattr(rd, "competitor_exclusion_reason"))
+        self.assertFalse(hasattr(rd, "COMPETITOR_DENYLIST"))
+
     def test_current_plan_clean(self):
         self.assertEqual(check_sources.check(rd.SOURCE_PLAN), [])
+        self.assertEqual(check_sources.upstream_coverage()[0], [])
 
     def test_plan_refused(self):
-        for src in ({"id": "silicondata_rv", "url": "https://x"},
+        for src in ({"id": "silicondata_rv", "url": "https://example.com"},
                     {"id": "x", "url": "https://data.ornn.com/analytics"},
-                    {"id": "x", "url": "https://x", "name": "SemiAnalysis index"},
-                    {"id": "x", "url": "https://www.ornnai.com"}):
-            self.assertTrue(check_sources.check(rd.SOURCE_PLAN + [src]))
-            with self.assertRaises(SystemExit):
-                rd.assert_no_competitor_sources(rd.SOURCE_PLAN + [src])
+                    {"id": "x", "url": "https://www.ornnai.com/"},
+                    {"id": "x", "url": "https://example.com", "name": "SemiAnalysis GPU index"},
+                    {"id": "compute_exchange", "url": "https://example.com"},
+                    {"id": "x", "url": "https://www.compute.exchange/"}):
+            self.assertTrue(check_sources.check(rd.SOURCE_PLAN + [src]), src)
 
-    def test_rows_refused(self):
-        with self.assertRaises(SystemExit):
-            rd.assert_no_competitor_rows([{"source_id": "a", "source_url": "https://www.silicondata.com/x"}])
-        rd.assert_no_competitor_rows([{"source_id": "geniushpc", "source_name": "Genius HPC", "source_url": "https://geniushpc.com"}])
+    def test_identity_fields_only(self):
+        rec = {"source_health": [{"source_id": "nebius", "url": "https://nebius.com/prices", "ok": True,
+                                  "error": "page cites SemiAnalysis ClusterMAX Gold award; Ornn; Silicon Data"}],
+               "observations": [{"source_id": "nebius", "source_name": "Nebius",
+                                 "source_url": "https://nebius.com/prices",
+                                 "raw_text": "Rated Gold by SemiAnalysis", "notes": "see semianalysis.com"}]}
+        self.assertEqual(denylist.source_hits(rec), [])
+        for bad in ({"source_id": "semianalysis"}, {"source_name": "Silicon Data SDH100RT"},
+                    {"url": "https://gpu-index.semianalysis.com/x"}, {"source_url": "https://compute.exchange/x"},
+                    {"source_name": "Ornn OCPI"}):
+            self.assertTrue(denylist.source_hits([bad]), bad)
+        for ok in ("https://notsilicondata.com.example.org", "https://cornnet.com", "https://semianalysis.com.evil.io"):
+            self.assertIsNone(denylist.match_url(ok), ok)
+        self.assertFalse([n for n in ("Genius HPC", "Cornell", "semiconductor", "silicon", "Nebius") if denylist.match_name(n)])
 
-    def test_export_source_hits(self):
-        self.assertTrue(denylist.source_hits({"source_health": [{"source_id": "x", "url": "https://semianalysis.com"}]}))
-        self.assertFalse([t for t in ("Genius HPC", "Cornell", "semiconductor", "silicon") if denylist.matches(t)])
-
-    def test_pipeline_list_covers_denylist(self):
-        self.assertTrue(set(denylist.DENY_TERMS) <= set(rd.COMPETITOR_DENYLIST))
+    def test_export_refuses(self):
+        import subprocess
+        priv = json.loads(Path("/workspace/computenav/output/latest.json").read_text()) \
+            if Path("/workspace/computenav/output/latest.json").exists() else None
+        if priv is None:
+            self.skipTest("no private latest.json available")
+        for mutate, expect in ((lambda p: p["source_health"].append(
+                {"source_id": "cx", "url": "https://www.compute.exchange/", "ok": False, "observation_count": 0}), 1),
+                (lambda p: p["source_health"][0].update(error="mentions SemiAnalysis award"), 0)):
+            p = copy.deepcopy(priv)
+            mutate(p)
+            d = Path(tempfile.mkdtemp())
+            (d / "latest.json").write_text(json.dumps(p))
+            r = subprocess.run([sys.executable, str(HERE / "export_public.py"), "--allow-observation-only",
+                                "--private-latest", str(d / "latest.json"), "--public-dir", str(d / "pub")],
+                               capture_output=True, text=True)
+            self.assertEqual(r.returncode, expect, r.stdout + r.stderr)
 
 
 class PublicDataTests(unittest.TestCase):
@@ -59,7 +85,7 @@ class PublicDataTests(unittest.TestCase):
         ep.assert_english(self.L)
         ep.assert_english(self.H)
         self.assertEqual(check_public.json_problems(self.L, "l") + check_public.json_problems(self.H, "h"), [])
-        self.assertEqual(denylist.text_hits(self.L) + denylist.text_hits(self.H), [])
+        self.assertEqual(denylist.source_hits(self.L) + denylist.source_hits(self.H), [])
         self.assertEqual(check_public.check(), [])
 
     def test_small_sample_guard(self):

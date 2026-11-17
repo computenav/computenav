@@ -26,9 +26,10 @@ Rules (see README "Data licensing"):
     _identifiable()). Otherwise it is null with nav_hidden=true + reason.
     The same masking is stored in history.json, and assert_small_sample()
     re-checks latest + every history point before anything is written.
-  * Competitor denylist (pipeline/denylist.py): if any source / observation of
-    the run, or any public string, matches Silicon Data / Ornn / SemiAnalysis,
-    the export aborts.
+  * Competitor denylist (pipeline/denylist.py): if the id, URL domain or
+    registered name of any source / observation of the run, or of any public
+    record, matches Silicon Data / Ornn / SemiAnalysis / Compute Exchange, the
+    export aborts. Free text (errors, notes) is not scanned.
   * history.json is the long-term public record: it is read from the repo,
     today's point is upserted (keyed by asof_date_pt), and it is written back.
     nav.db is NOT needed for continuity.
@@ -461,8 +462,9 @@ def main(argv=None):
     a = ap.parse_args(argv)
 
     priv = json.loads(Path(a.private_latest).read_text())
-    # Competitor denylist guard (Silicon Data / Ornn / SemiAnalysis): refuse if
-    # any source in the run, or any observation behind it, comes from them.
+    # Competitor denylist guard (Silicon Data / Ornn / SemiAnalysis / Compute
+    # Exchange): refuse if any source or observation of the run is theirs,
+    # matched by id / URL domain / registered name only.
     import denylist
     hits = denylist.source_hits(priv, "latest")
     dash = Path(a.private_latest).with_name("dashboard_data.json")
@@ -486,7 +488,7 @@ def main(argv=None):
     # USD-only guard (shared with pipeline/check_public.py)
     from check_public import json_problems
     probs = json_problems(pub, "latest") + json_problems(hist, "history")
-    probs += denylist.text_hits(pub, "latest") + denylist.text_hits(hist, "history")
+    probs += denylist.source_hits(pub, "latest") + denylist.source_hits(hist, "history")
     if probs:
         raise SystemExit("GUARD: " + "; ".join(probs[:5]))
     (out / "latest.json").write_text(json.dumps(pub, indent=2, ensure_ascii=False) + "\n")

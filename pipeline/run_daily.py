@@ -26,6 +26,7 @@ import sys
 import time
 import traceback
 import urllib.error
+import urllib.parse
 import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
@@ -117,6 +118,166 @@ def mark_observation_only(row: dict) -> dict:
 
 def is_official(row: dict, flag: str) -> bool:
     return bool(row.get(flag)) and row.get("source_id") not in OBSERVATION_ONLY_SOURCES
+
+
+# ---------------------------------------------------------------------------
+# Competitor exclusion (hard rule)
+# Silicon Data, Ornn, and SemiAnalysis data must never enter NAV calculation
+# in any way — not as an input, and not as calibration, validation, or
+# cross-check — and must not be stored as observations in nav.db.
+# Research copies may remain in raw/ and samples/ only.
+# Matching is by source id, display name, and URL/domain only, never by
+# page-body mentions (a third-party site may cite SemiAnalysis in copy).
+# Unlike OBSERVATION_ONLY_SOURCES, a hit is logged at ERROR and skipped
+# entirely: no fetch, no snapshot write, no observation insert.
+# ---------------------------------------------------------------------------
+COMPETITOR_EXCLUDED_SOURCES = {
+    # Explicit source ids (none of these are in SOURCE_PLAN today).
+    "silicondata": "Silicon Data — 竞品数据，禁止进入 NAV 计算或观察库。",
+    "silicon_data": "Silicon Data — 竞品数据，禁止进入 NAV 计算或观察库。",
+    "sdh100rt": "Silicon Data SDH100RT / H100 租金指数 — 竞品数据，禁止进入 NAV 计算或观察库。",
+    "sdh100": "Silicon Data H100 租金指数 — 竞品数据，禁止进入 NAV 计算或观察库。",
+    "gpu_residual_value": "Silicon Data GPU Residual Value — 竞品数据，禁止进入 NAV 计算或观察库。",
+    "ornn": "Ornn — 竞品数据，禁止进入 NAV 计算或观察库。",
+    "ornn_rvs": "Ornn Residual Value Swap (RVS) — 竞品数据，禁止进入 NAV 计算或观察库。",
+    "ornn_ocpi": "Ornn OCPI — 竞品数据，禁止进入 NAV 计算或观察库。",
+    "ornn_depreciation": "Ornn Depreciation Curves — 竞品数据，禁止进入 NAV 计算或观察库。",
+    "semianalysis": "SemiAnalysis — 竞品数据，禁止进入 NAV 计算或观察库。",
+    "semi_analysis": "SemiAnalysis — 竞品数据，禁止进入 NAV 计算或观察库。",
+    # Silicon Data sister venue; market data is not licensed for index use.
+    "compute_exchange": "Compute Exchange 为 Silicon Data 关联方，行情数据禁止进入 NAV 计算或观察库。",
+}
+
+COMPETITOR_EXCLUDED_DOMAINS = {
+    "silicondata.com",
+    "ornn.com",
+    "data.ornn.com",
+    "semianalysis.com",
+    "gpu-index.semianalysis.com",
+    "compute.exchange",
+}
+
+# Case-insensitive patterns applied to "id + name + url" haystack.
+COMPETITOR_EXCLUDED_PATTERNS = (
+    (re.compile(r"silicon[\s._-]?data", re.I),
+     "Silicon Data（含 SDH100RT / H100 租金指数、GPU Residual Value）— 竞品数据，禁止进入 NAV 计算或观察库。"),
+    (re.compile(r"sdh100rt|sdh100", re.I),
+     "Silicon Data SDH100RT / H100 租金指数 — 竞品数据，禁止进入 NAV 计算或观察库。"),
+    (re.compile(r"gpu\s*residual\s*value", re.I),
+     "Silicon Data GPU Residual Value — 竞品数据，禁止进入 NAV 计算或观察库。"),
+    (re.compile(r"\bornn\b", re.I),
+     "Ornn（含 RVS / Depreciation Curves / OCPI）— 竞品数据，禁止进入 NAV 计算或观察库。"),
+    (re.compile(r"residual\s*value\s*swap|\brvs\b", re.I),
+     "Ornn Residual Value Swap (RVS) — 竞品数据，禁止进入 NAV 计算或观察库。"),
+    (re.compile(r"\bocpi\b", re.I),
+     "Ornn OCPI — 竞品数据，禁止进入 NAV 计算或观察库。"),
+    (re.compile(r"depreciation\s*curves?", re.I),
+     "Ornn Depreciation Curves — 竞品数据，禁止进入 NAV 计算或观察库。"),
+    (re.compile(r"semi[\s._-]?analysis", re.I),
+     "SemiAnalysis — 竞品数据，禁止进入 NAV 计算或观察库。"),
+    (re.compile(r"compute[\s._-]?exchange", re.I),
+     "Compute Exchange 为 Silicon Data 关联方，行情数据禁止进入 NAV 计算或观察库。"),
+)
+
+
+def _registrable_domain(host: str) -> str:
+    host = (host or "").lower().strip().rstrip(".")
+    if host.startswith("www."):
+        host = host[4:]
+    return host
+
+
+def competitor_exclusion_reason(
+    source_id: Optional[str] = None,
+    source_name: Optional[str] = None,
+    source_url: Optional[str] = None,
+) -> Optional[str]:
+    """Return a reason string if this source is a blocked competitor, else None."""
+    sid = (source_id or "").strip()
+    if sid in COMPETITOR_EXCLUDED_SOURCES:
+        return COMPETITOR_EXCLUDED_SOURCES[sid]
+    url = (source_url or "").strip()
+    if url:
+        try:
+            host = _registrable_domain(urllib.parse.urlparse(url).hostname or "")
+        except Exception:
+            host = ""
+        if host:
+            for blocked in COMPETITOR_EXCLUDED_DOMAINS:
+                if host == blocked or host.endswith("." + blocked):
+                    return f"竞品/关联方域名 {host} — 禁止进入 NAV 计算或观察库。"
+    hay = " ".join(x for x in (sid, source_name or "", url) if x)
+    if hay:
+        for pat, reason in COMPETITOR_EXCLUDED_PATTERNS:
+            if pat.search(hay):
+                return reason
+    return None
+
+
+def drop_competitor_observations(observations: list[dict], *, context: str = "") -> list[dict]:
+    """Filter competitor rows out of an in-memory observation list. Log each drop."""
+    kept: list[dict] = []
+    for o in observations:
+        reason = competitor_exclusion_reason(
+            o.get("source_id"), o.get("source_name"), o.get("source_url"),
+        )
+        if reason:
+            log.error(
+                "COMPETITOR_EXCLUDED %s source_id=%s name=%s url=%s — dropped, not used in calculation: %s",
+                context or "observation",
+                o.get("source_id"), o.get("source_name"), o.get("source_url"), reason,
+            )
+            continue
+        kept.append(o)
+    return kept
+
+
+def scrub_competitor_rows_from_db(conn: sqlite3.Connection) -> list[dict]:
+    """List and delete competitor observations in nav.db. Raw/snapshot files are left untouched.
+
+    Also reports (but does not delete) any matching source_health / snapshots table rows.
+    """
+    removed: list[dict] = []
+    rows = [dict(r) for r in conn.execute("SELECT * FROM observations ORDER BY id").fetchall()]
+    for o in rows:
+        reason = competitor_exclusion_reason(
+            o.get("source_id"), o.get("source_name"), o.get("source_url"),
+        )
+        if not reason:
+            continue
+        removed.append({
+            "table": "observations",
+            "id": o.get("id"),
+            "run_id": o.get("run_id"),
+            "source_id": o.get("source_id"),
+            "source_name": o.get("source_name"),
+            "source_url": o.get("source_url"),
+            "asof_date_pt": o.get("asof_date_pt"),
+            "reason": reason,
+        })
+        conn.execute("DELETE FROM observations WHERE id=?", (o["id"],))
+        log.error(
+            "COMPETITOR_EXCLUDED observation already in nav.db id=%s run_id=%s source_id=%s "
+            "url=%s — deleted from observations (raw files kept): %s",
+            o.get("id"), o.get("run_id"), o.get("source_id"), o.get("source_url"), reason,
+        )
+    if removed:
+        conn.commit()
+
+    for table, cols in (
+        ("source_health", "id, run_id, source_id, url"),
+        ("snapshots", "id, run_id, source_id, url, path"),
+    ):
+        for r in conn.execute(f"SELECT {cols} FROM {table}").fetchall():
+            d = dict(r)
+            reason = competitor_exclusion_reason(d.get("source_id"), None, d.get("url"))
+            if reason:
+                log.error(
+                    "COMPETITOR_EXCLUDED row in %s (left in place; raw files kept): %s reason=%s",
+                    table, d, reason,
+                )
+    return removed
+
 
 MODEL_KEYS = ["H100_SXM", "H100_PCIe", "A100_80GB", "A100_40GB"]
 MODEL_LABELS = {
@@ -1017,41 +1178,8 @@ SOURCE_PLAN = [
 ]
 
 
-# Competitor denylist (2026-11-17): data from Silicon Data, Ornn and
-# SemiAnalysis must never enter the NAV calculation or dashboard data, as input
-# or as validation/calibration. Matching sources/observations are refused.
-COMPETITOR_DENYLIST = (
-    "silicondata", "silicon data", "silicon-data", "silicon_data",
-    "ornn", "ornnai",
-    "semianalysis", "semi analysis", "semi-analysis", "semi_analysis",
-)
-
-
-def _competitor_hit(*values) -> Optional[str]:
-    for v in values:
-        s = str(v or "").lower()
-        for term in COMPETITOR_DENYLIST:
-            if term in s:
-                return term
-    return None
-
-
-def assert_no_competitor_sources(plan) -> None:
-    for src in plan:
-        hit = _competitor_hit(src.get("id"), src.get("url"), src.get("name"),
-                              getattr(src.get("parser"), "__name__", ""))
-        if hit:
-            raise SystemExit(f"refusing denylisted competitor source {src.get('id')!r} (matched {hit!r})")
-
-
-def assert_no_competitor_rows(rows) -> None:
-    for r in rows:
-        hit = _competitor_hit(r.get("source_id"), r.get("source_name"), r.get("source_url"))
-        if hit:
-            raise SystemExit(f"refusing observation from denylisted competitor source {r.get('source_id')!r} (matched {hit!r})")
-
-
 def compute_index(observations, asof_date_pt, computed_at_utc, computed_at_pt):
+    observations = drop_competitor_observations(list(observations or []), context="compute_index")
     rows = []
     per_model = {}
     for key in MODEL_KEYS:
@@ -1141,6 +1269,9 @@ IDX_COLS = [
 
 
 def insert_observations(conn, rows):
+    rows = drop_competitor_observations(rows, context="insert_observations")
+    if not rows:
+        return
     q = "INSERT INTO observations (" + ",".join(OBS_COLS) + ") VALUES (" + ",".join(["?"] * len(OBS_COLS)) + ")"
     conn.executemany(q, [[r.get(c) for c in OBS_COLS] for r in rows])
 
@@ -1306,7 +1437,6 @@ def run():
         handlers=[logging.FileHandler(log_path, encoding="utf-8"), logging.StreamHandler(sys.stdout)],
     )
     log.info("run_id=%s asof_date_pt=%s", run_id, asof_date_pt)
-    assert_no_competitor_sources(SOURCE_PLAN)
 
     conn = connect_db()
     fx = FX()
@@ -1315,8 +1445,32 @@ def run():
 
     # CI hook (no-op by default): COMPUTENAV_SKIP_SOURCES=id1,id2 skips those fetches.
     skip = {x.strip() for x in os.environ.get("COMPUTENAV_SKIP_SOURCES", "").split(",") if x.strip()}
+
+    already_removed = scrub_competitor_rows_from_db(conn)
+    if already_removed:
+        log.error("COMPETITOR_EXCLUDED: removed %s pre-existing observation(s) from nav.db before this run",
+                  len(already_removed))
+
     for src in SOURCE_PLAN:
         sid = src["id"]
+        competitor_reason = competitor_exclusion_reason(sid, src.get("name"), src.get("url"))
+        if competitor_reason:
+            log.error("COMPETITOR_EXCLUDED source %s url=%s — skipped (not fetched, not stored): %s",
+                      sid, src.get("url"), competitor_reason)
+            health.append({
+                "source_id": sid, "url": src["url"], "ok": False, "skipped": True,
+                "competitor_excluded": True,
+                "http_status": None, "error": "COMPETITOR_EXCLUDED: " + competitor_reason,
+                "observation_count": 0, "fetched_at_utc": None, "sha256": None,
+            })
+            conn.execute(
+                "INSERT INTO source_health (run_id,asof_date_pt,source_id,url,ok,http_status,error,observation_count,fetched_at_utc) "
+                "VALUES (?,?,?,?,?,?,?,?,?)",
+                (run_id, asof_date_pt, sid, src["url"], 0, None,
+                 "COMPETITOR_EXCLUDED: " + competitor_reason, 0, None),
+            )
+            conn.commit()
+            continue
         if sid in skip:
             log.info("%s skipped via COMPUTENAV_SKIP_SOURCES", sid)
             health.append({"source_id": sid, "url": src["url"], "ok": False, "skipped": True,
@@ -1364,7 +1518,7 @@ def run():
                         if not row.get("source_id"):
                             row["source_id"] = sid
                         mark_observation_only(row)
-                    assert_no_competitor_rows(rows)
+                    rows = drop_competitor_observations(rows, context=f"parse:{sid}")
                     insert_observations(conn, rows)
                     observations.extend(rows)
                     n_obs = len(rows)
@@ -1396,6 +1550,7 @@ def run():
 
     computed = now_utc()
     computed_pt = to_pt(computed)
+    observations = drop_competitor_observations(observations, context="pre-compute")
     index_rows = compute_index(observations, asof_date_pt, iso(computed), iso(computed_pt))
     upsert_index(conn, index_rows)
     conn.commit()
@@ -1454,6 +1609,11 @@ def recompute_from_run(run_id: str) -> int:
         handlers=[logging.FileHandler(log_path, encoding="utf-8"), logging.StreamHandler(sys.stdout)],
     )
     conn = connect_db()
+    already_removed = scrub_competitor_rows_from_db(conn)
+    if already_removed:
+        log.error("COMPETITOR_EXCLUDED: removed %s pre-existing observation(s) from nav.db before recompute",
+                  len(already_removed))
+
     raw_rows = [dict(r) for r in conn.execute(
         "SELECT * FROM observations WHERE run_id=? ORDER BY id", (run_id,)
     ).fetchall()]
@@ -1461,7 +1621,7 @@ def recompute_from_run(run_id: str) -> int:
         log.error("no observations for run_id=%s", run_id)
         return 2
     asof_date_pt = raw_rows[0]["asof_date_pt"]
-    assert_no_competitor_rows(raw_rows)
+    raw_rows = drop_competitor_observations(raw_rows, context=f"recompute:{run_id}")
     corrected = 0
     for row in raw_rows:
         before = (row.get("include_in_market"), row.get("include_in_income"), row.get("include_in_cost_new"))

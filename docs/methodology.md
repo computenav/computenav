@@ -92,6 +92,8 @@ All statements below were checked against the original pages opened on 2026-11-1
 
 Survey principle: report only what actual requests returned; if blocked, say blocked; if the sample is thin, say thin. Raw bytes, HTTP status and SHA-256, the source register and the day's price samples are kept in the project's private storage (not published with the public repository).
 
+**Competitor data isolation (hard rule):** No data from Silicon Data (including the SDH100RT / H100 rental index and GPU Residual Value), Ornn (including the Residual Value Swap, Depreciation Curves and OCPI) or SemiAnalysis may enter ComputeNAV's official calculation, neither as an input nor for parameter calibration, cross-checking or validation. Competitor information may be used only for market research and positioning statements (see Section 3) and never enters the index. Market data from Compute Exchange, a Silicon Data affiliate, likewise may not enter the official calculation. Competitor pages saved during research are kept in private research storage only; they are not written to the observation store and take no part in valuation. The pipeline enforces this by source id, registered name and URL domain.
+
 Fetch window approx. 2026-11-16 19:45–20:30 PT (2026-11-17 03:45–04:30 UTC). All prices in this public document are shown in USD only. Non-USD source prices are converted to USD internally at the day's FX rate (open.er-api.com, last updated 2026-11-17 00:02:31 UTC); FX conversion is used only for comparison and is **not the valuation itself**.
 
 ### 4.1 Market-approach sources (main weight, but zero sold transactions today)
@@ -114,7 +116,7 @@ Fetch window approx. 2026-11-16 19:45–20:30 PT (2026-11-17 03:45–04:30 UTC).
 | IronPlanet | 405 | 0 | Blocked |
 | HiBid / Public Surplus | No relevant lots | 0 | No H100/A100 lots found that day |
 | americancompute.com | Parked page | 0 | Do not use |
-| Compute Exchange | 200, only navigation for reserved rental products | 0 secondary sale prices | Keep watching; not a current public transaction tape |
+| Compute Exchange | 200, only navigation for reserved rental products | 0 secondary sale prices | Silicon Data affiliate; the Section 4 competitor isolation rule applies; must not enter the official calculation |
 
 **Dealer listings captured that day (all listed, not sold), USD ranges only:**
 

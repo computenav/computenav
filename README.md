@@ -45,7 +45,7 @@ All income- and cost-approach parameters are **placeholders to be calibrated**; 
 
 **History continuity:** `docs/data/history.json` is itself the long-term public record. It lives in the repository and each run only adds or updates the current day, so `nav.db` does not need to be kept. The first point (2026-11-16) was produced by `pipeline/seed_from_db.py`, which reruns the upstream `run_daily.py --recompute-from-run` on a copy of the project's internal database (observation-only sources do not enter the official calculation).
 
-**Pipeline identical to upstream:** `pipeline/run_daily.py` is a verbatim copy of the project's upstream script plus two environment-variable hooks that are no-ops by default, and the competitor denylist guard (`pipeline/upstream-denylist.patch`, proposed for upstream): `COMPUTENAV_DATA_DIR` (private output directory; defaults to the upstream location) and `COMPUTENAV_SKIP_SOURCES` (skip fetching the listed sources; nothing is skipped by default). The diff is in `pipeline/upstream-hooks.patch`. Note: the upstream script contains Chinese comments and internal note strings; these never appear in the published JSON or on the site (`export_public.py` translates or drops them and refuses to publish non-English text).
+**Pipeline identical to upstream:** `pipeline/run_daily.py` is a verbatim, unmodified copy of the project's upstream script (empty diff). Upstream provides two environment-variable hooks that are no-ops by default: `COMPUTENAV_DATA_DIR` (private output directory; defaults to the upstream location) and `COMPUTENAV_SKIP_SOURCES` (skip fetching the listed sources; nothing is skipped by default). It also contains upstream's own competitor exclusion (see *Competitor data*). The pipeline does not read the private source register at runtime. Note: the upstream script contains Chinese comments and internal note strings; these never appear in the published JSON or on the site (`export_public.py` translates or drops them and refuses to publish non-English text).
 
 Running locally:
 
@@ -69,7 +69,7 @@ python3 -m http.server -d docs 8000   # open http://localhost:8000
 
 ## Competitor data
 
-Data from Silicon Data, Ornn and SemiAnalysis is never used in the ComputeNAV calculation or dashboard data — neither as an input nor for validation or calibration. The methodology mentions them only as competitors. This is enforced by a denylist (`pipeline/denylist.py`): the CI runs `pipeline/check_sources.py` before computing, the pipeline refuses to register such a source or store its observations, and `export_public.py` refuses to publish if any source, observation or public value matches.
+Data from Silicon Data, Ornn and SemiAnalysis, and market data from Compute Exchange (a Silicon Data affiliate), is never used in the ComputeNAV calculation or dashboard data — neither as an input nor for validation or calibration. The methodology mentions them only as competitors. Enforcement, all matched by source id, URL domain and registered name only (never by free text, so a third-party page that merely mentions one of them is unaffected): the upstream pipeline skips and logs any such source and filters its observations; the CI runs `pipeline/check_sources.py` before computing and refuses if one is registered; `export_public.py` refuses to publish if any source, observation or public record matches `pipeline/denylist.py`.
 
 ## Currency
 

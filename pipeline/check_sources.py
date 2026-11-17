@@ -1,7 +1,12 @@
 #!/usr/bin/env python3
-"""CI pre-compute check: refuse to run if the pipeline registers a
-denylisted competitor source (see denylist.py). Imports run_daily without
-executing it and inspects SOURCE_PLAN (ids, URLs, names, parser names)."""
+"""CI pre-compute check: refuse to run if the pipeline registers a competitor
+source (Silicon Data / Ornn / SemiAnalysis / Compute Exchange).
+
+Imports run_daily without executing it and checks every SOURCE_PLAN entry by
+id, URL domain and registered name against denylist.py. It also verifies that
+upstream's own guard (competitor_exclusion_reason) is present and covers each
+denied id/domain; gaps are reported as warnings (this check and the export
+guard still refuse them)."""
 from __future__ import annotations
 
 import sys
@@ -15,31 +20,33 @@ import run_daily  # noqa: E402
 def check(plan) -> list[str]:
     problems = []
     for src in plan:
-        fields = {k: src.get(k) for k in ("id", "url", "name")}
-        parser = src.get("parser")
-        fields["parser"] = getattr(parser, "__name__", None)
-        for k, v in fields.items():
-            hit = denylist.matches(v)
-            if hit:
-                problems.append(f"SOURCE_PLAN entry {src.get('id')!r}: {k}={v!r} matches denylist term {hit!r}")
-    # the pipeline's own hook must cover every denylist term
-    own = getattr(run_daily, "COMPETITOR_DENYLIST", None)
-    if own is None:
-        problems.append("run_daily.COMPETITOR_DENYLIST missing (pipeline-side guard not installed)")
-    else:
-        missing = [t for t in denylist.DENY_TERMS if t not in own]
-        if missing:
-            problems.append(f"run_daily.COMPETITOR_DENYLIST lacks {missing}")
+        hit = denylist.match_source(src.get("id"), src.get("name"), src.get("url"))
+        if hit:
+            problems.append(f"SOURCE_PLAN entry {src.get('id')!r} ({src.get('url')}) is a denied competitor source (matched {hit!r})")
     return problems
+
+
+def upstream_coverage() -> tuple[list[str], list[str]]:
+    fn = getattr(run_daily, "competitor_exclusion_reason", None)
+    if fn is None:
+        return ["run_daily.competitor_exclusion_reason missing (upstream guard not present)"], []
+    warnings = [f"upstream guard does not reject id {i!r} (still refused here and at export)"
+                for i in sorted(denylist.DENY_IDS) if not fn(i, None, None)]
+    warnings += [f"upstream guard does not reject domain {d!r} (still blocked by export guard)"
+                for d in sorted(denylist.DENY_DOMAINS) if not fn(None, None, f"https://{d}/")]
+    return [], warnings
 
 
 def main():
     probs = check(run_daily.SOURCE_PLAN)
-    for p in probs:
+    errs, warns = upstream_coverage()
+    for w in warns:
+        print("DENYLIST WARNING:", w)
+    for p in probs + errs:
         print("DENYLIST CHECK FAILED:", p)
-    if probs:
+    if probs or errs:
         return 1
-    print(f"denylist check OK: {len(run_daily.SOURCE_PLAN)} sources, none from Silicon Data / Ornn / SemiAnalysis")
+    print(f"denylist check OK: {len(run_daily.SOURCE_PLAN)} sources, none from Silicon Data / Ornn / SemiAnalysis / Compute Exchange")
     return 0
 
 
