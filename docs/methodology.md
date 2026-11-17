@@ -394,6 +394,45 @@ The goal follows the same starting sequence as Silicon Data: **first get the mac
 
 - Source register, the day's price samples, raw responses (including the bytes needed for hash verification): project private storage, **not published with the public repository** (some sources' terms do not allow redistribution).  
 - Daily pipeline code: `pipeline/run_daily.py`; public aggregate export: `pipeline/export_public.py`.  
-- This methodology: `docs/methodology.md`.  
+- This methodology: `docs/methodology.md`.
+
+## 15. Research datasets: chip launch windows, raw quotes by platform, and GPU age (not used in the v0 official calculation)
+
+**Section status:** Added 2026-11-17 PT. The pipeline starts collecting the three kinds of data below from that day's run. Their purpose is **research and future calibration** (age-based residual-value curves, depreciation and price reactions around launches). They are **not** inputs to the v0 official market, income or cost approaches or to the composite, and they must not be used to "validate" official index levels. Fields that were not observed are left empty. No values are invented, and no prices are backfilled for dates before 2026-11-16, when none were collected.
+
+The competitor-isolation rules (Sections 4 and 10) also apply to these research datasets: no data from Silicon Data, Ornn (including ornnai.com), SemiAnalysis or Compute Exchange may enter the official calculation or be stored as an observation under this section. Vast.ai and eBay remain observation-only.
+
+**Publication:** these research datasets are kept in the project's private storage and are **not published** in this repository or on the dashboard, because some sources' terms do not allow redistribution or index use without a licence.
+
+### 15.1 Chip launch events and daily prices around them (chip events + event window)
+
+The pipeline maintains a `chip_events` table with these fields: model, vendor, event type (`announce` / `launch` / `ship` / `GA` / `price-cut`), event date, official source URL, and notes.
+
+**Only events that can be checked to a specific calendar date on the vendor's official press release or newsroom page are included.** When a press release only says "ships in a given quarter" or "available in the second half", that wording is kept in the notes and no specific ship date is invented. The first seed (verified 2026-11-17) covers: NVIDIA A100 (including the separate announcement of the 80GB variant), H100, H200, B200, and B300 / GB300; AMD Instinct MI250X, MI300X, MI325X, and MI350X / MI355X; and the MI400 series, which has been officially previewed but has no public ship date. All seed sources are NVIDIA Newsroom or AMD press / investor-relations releases.
+
+For each event with a calendar date, the pipeline builds a daily, per-model price series from **T-90 to T+180** (from that day's observations: USD price per GPU and USD rental per GPU-hour). It is implemented as:
+
+- an SQL view, `event_window_observations`, that joins only the observation rows that **actually exist** inside the window;
+- a daily export that fills in every calendar day in the window, with price fields set to `null` on days with no observation.
+
+**Price history exists only from 2026-11-16 PT (the pipeline's first observation day).** Window dates earlier than that are kept as calendar slots, marked `within_observed_history=0`, with empty prices. Backfill must not be invented to make a curve "look complete".
+
+**About the Wayback Machine (considered, not implemented):** if a public page of an official reseller or rental provider that is **licensed** for index research has historical snapshots in the Internet Archive Wayback Machine, and that source's terms clearly allow use of saved historical public pages, those snapshots could be used to backfill observations in the window before 2026-11-16. Backfill would still have to go through the same parsing, competitor-exclusion and licensing rules as live data, and record the original `archive.org` URL and timestamp. Sources with unclear or prohibitive terms may not be backfilled. This option was **not implemented**, and no Wayback data has been written to the observation store.
+
+### 15.2 Raw quotes by platform
+
+Every scraped observation, whether or not it enters the three official approaches, keeps its full raw fields, including at least: source, URL, timestamp, raw price text, currency, pricing unit, term (on-demand / reserved / spot / contract; `unconfirmed` or empty if it cannot be confirmed), region, form factor, memory, quantity / configuration, condition, availability, and the SHA-256 and location of the matching snapshot.
+
+These fields are added to the `observations` table through a database migration (only missing columns are added; historical prices are not changed). A daily private raw-quote export includes both official and observation-only sources, and an `in_official_v0` flag shows whether each row entered that day's v0 official calculation. Any non-USD prices in this private research file are kept as quoted; all published values remain USD only.
+
+Starting from existing snapshots, the parser also recognises AMD Instinct models (MI300X, MI325X, MI350X, MI355X, MI250X, MI210; MI250 / MI350P are recorded as written if they appear in a source, not rewritten to a neighbouring SKU). Sources are limited to those already being collected: RunPod, DigitalOcean, Crusoe and Genius HPC. All of these AMD rows are **marked as excluded from the v0 official calculation** (`include_in_* = 0`). If Genius HPC's used catalogue only lists a chassis that is "compatible with MI210 / MI350P" but is actually configured with a different GPU, that chassis price is **not** recorded as an AMD per-GPU observation.
+
+### 15.3 GPU age
+
+For future calibration of the residual-value curve, observation rows gain: `age_months`, `manufacture_date`, `first_deploy_date`, `age_source` (listing text / serial / seller statement / inferred), and `age_confidence`.
+
+Parsing rule: only age or dates that are **explicitly stated** in listing or price-list text are extracted (for example "3 years old", "18 months in service", "manufactured 2023-06", "pulled from cluster"). When there is only a condition or remaining-warranty hint such as "used / refurbished / 18-month warranty", the row may record `age_source=listing text` and `age_confidence=low`, but **`age_months` stays empty**: remaining warranty cannot be used to back out age when the original warranty length is unknown. Observations with no hint have all age fields set to `null`. No fake age is filled in by "taking the midpoint for unknown age" (the 50% factor in the cost approach is still a to-be-calibrated placeholder from Section 13 and is a different thing from these fields).
+
+---
 
 This document contains no forecast of future index levels and does not constitute investment, credit or valuation advice.
