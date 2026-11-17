@@ -74,6 +74,9 @@ jobs:
       - name: Render methodology page
         run: python pipeline/render_methodology.py
 
+      - name: Check public files (USD only, English only)
+        run: python pipeline/check_public.py
+
       - name: Verify nothing private is in the site folder
         run: |
           set -e

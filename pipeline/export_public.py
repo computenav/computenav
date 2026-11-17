@@ -65,7 +65,7 @@ ASSUMPTION_TEXT_EN = {
     ("income", "rental_rate_rule"): ("45a309c883bc", "Median of the day's on-demand / list rents (USD per GPU-hour) admitted to the income approach. Reserved, spot and unclear-term observations, and observations whose form factor cannot be assigned, are excluded from the median."),
     ("cost", "book_life_note"): ("190b61bbd4db", "Placeholder: the straight-line life uses IREN's 5-year accounting life for pledged GPUs as a scenario anchor (CoreWeave uses 6 years for compute equipment). The official life is to be calibrated."),
     ("cost", "age_note"): ("3e87306a5ad5", "Placeholder: used observations generally lack age, so the cost approach uses a 50% remaining-value factor (\"5-year straight line, midpoint for unknown age\"). Not a calibrated residual curve."),
-    ("cost", "new_price_source"): ("1de9ef7f365f", "Genius HPC \"New From\" prices on the same page (EUR ex-VAT dealer starting prices) are preferred. These are not NVIDIA MSRP and not US channel prices."),
+    ("cost", "new_price_source"): ("1de9ef7f365f", "Genius HPC \"New From\" prices on the same page (ex-VAT dealer starting prices in a non-USD currency, converted to USD at the daily FX rate) are preferred. These are not NVIDIA MSRP and not US channel prices."),
     ("market", "listing_rule"): ("692ece886998", "Only parseable dealer listings are used (Genius HPC in stock, Creative Compute on enquiry). AnchorGPU (ordering not open), third-party compilations (Clustermelt/Mulligan), unavailable systems, and systems simply divided by card count without deducting host components do not enter the official market-approach median."),
     ("composite", "rule"): ("008851e89fec", "Equal-weight average of the four sub-indices (installed-base weights to be calibrated). Each sub-index's indicative NAV is the equal-weight average of the market/income/cost values available that day (method weights to be calibrated)."),
 }
@@ -371,8 +371,7 @@ def build_latest(priv: dict, allow_observation_only: bool = False) -> dict:
         "fx": {
             "source": fx.get("source"),
             "asof_utc": fx.get("asof_utc"),
-            "usd_per_eur": fx.get("usd_per_eur"),
-            "usd_per_gbp": fx.get("usd_per_gbp"),
+            "note": "All published values are in USD. Non-USD source prices are converted to USD internally at this daily FX rate; the rates themselves are not published.",
         },
         "assumptions": translate_assumptions(priv.get("assumptions") or {}),
         "composite": {
@@ -472,6 +471,11 @@ def main(argv=None):
     assert_small_sample(pub, hist)
     assert_english(pub)
     assert_english(hist)
+    # USD-only guard (shared with pipeline/check_public.py)
+    from check_public import json_problems
+    probs = json_problems(pub, "latest") + json_problems(hist, "history")
+    if probs:
+        raise SystemExit("GUARD: " + "; ".join(probs[:5]))
     (out / "latest.json").write_text(json.dumps(pub, indent=2, ensure_ascii=False) + "\n")
     hp.write_text(json.dumps(hist, indent=2, ensure_ascii=False) + "\n")
     print(f"wrote {out/'latest.json'} and {hp} (asof {pub['asof_date_pt']}, {len(hist['dates'])} history dates)")

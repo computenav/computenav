@@ -12,7 +12,7 @@
 <main><p><a href="index.html">← Back to dashboard</a></p>
 <h1 id="computenav-ai-nav-index-methodology-v0">ComputeNAV / AI NAV Index Methodology v0</h1>
 <blockquote>
-<p><strong>Public copy note:</strong> This document is an English translation of the project's internal methodology_v0.md (2026-11-16 PT). To respect data licences, this public version removes the Vast.ai figures, the eBay asking prices relayed by Mulligan, and private storage paths; everything else is unchanged in substance. The public dashboard's daily calculation follows the "source admission criteria" in Section 10 and <strong>does not use Vast.ai data</strong>. In addition, the public data does not publish any method value with fewer than 3 observations (see the repository README). High-school student research project. Indicative data only. Not investment advice.</p>
+<p><strong>Public copy note:</strong> This document is an English translation of the project's internal methodology_v0.md (2026-11-16 PT). To respect data licences, this public version removes the Vast.ai figures, the eBay asking prices relayed by Mulligan, and private storage paths. All prices are shown in USD only (non-USD sources are converted at the day's FX rate), and individual listing / price-list values in Section 4 are replaced by USD ranges over at least 3 observations. Everything else is unchanged in substance. The public dashboard's daily calculation follows the "source admission criteria" in Section 10 and <strong>does not use Vast.ai data</strong>. In addition, the public data does not publish any method value with fewer than 3 observations (see the repository README). High-school student research project. Indicative data only. Not investment advice.</p>
 </blockquote>
 <p><strong>Document status:</strong> Draft for review; not an effective benchmark document<br />
 <strong>Version:</strong> v0.1-draft<br />
@@ -159,7 +159,7 @@
 <hr />
 <h2 id="4-data-sources-and-the-2026-11-16-survey">4. Data sources and the 2026-11-16 survey</h2>
 <p>Survey principle: report only what actual requests returned; if blocked, say blocked; if the sample is thin, say thin. Raw bytes, HTTP status and SHA-256, the source register and the day's price samples are kept in the project's private storage (not published with the public repository).</p>
-<p>Fetch window approx. 2026-11-16 19:45–20:30 PT (2026-11-17 03:45–04:30 UTC). FX rates (used only to convert foreign-currency listings into USD for comparison — <strong>not the valuation itself</strong>) came from open.er-api.com, last updated 2026-11-17 00:02:31 UTC: 1 USD = 0.908584 EUR = 0.758255 GBP (approx. 1 EUR = 1.1006 USD, 1 GBP = 1.3188 USD).</p>
+<p>Fetch window approx. 2026-11-16 19:45–20:30 PT (2026-11-17 03:45–04:30 UTC). All prices in this public document are shown in USD only. Non-USD source prices are converted to USD internally at the day's FX rate (open.er-api.com, last updated 2026-11-17 00:02:31 UTC); FX conversion is used only for comparison and is <strong>not the valuation itself</strong>.</p>
 <h3 id="41-market-approach-sources-main-weight-but-zero-sold-transactions-today">4.1 Market-approach sources (main weight, but zero sold transactions today)</h3>
 <p><strong>Sold transactions obtained today: 0.</strong> This is the most important fact at v0 launch and must appear as a quality flag in every trial calculation.</p>
 <table>
@@ -186,13 +186,13 @@
 </tr>
 <tr>
 <td>Genius HPC secondary catalog</td>
-<td>200, HTML with fixed ex-VAT EUR prices</td>
+<td>200, HTML with fixed ex-VAT prices in a non-USD currency (converted to USD)</td>
 <td>6 listed SKUs (incl. 1 DGX system) + 6 "New From" new-card prices on the same page</td>
 <td>The more usable dealer listings in v0; still asks, not transactions</td>
 </tr>
 <tr>
 <td>Creative Compute (UK)</td>
-<td>200; product pages with GBP ex-VAT prices</td>
+<td>200; product pages with ex-VAT prices in a non-USD currency (converted to USD)</td>
 <td>3 (H100 card, A100 card, 8×A100 system)</td>
 <td>Regional listings; enquiry, not an order</td>
 </tr>
@@ -205,7 +205,7 @@
 <tr>
 <td>ServerPartsDeals 8×H100 system</td>
 <td>200 (product page); <code>available=false</code></td>
-<td>1 delisted / unavailable listing, $180,000</td>
+<td>1 delisted / unavailable listing</td>
 <td>Usable as a worked example of splitting a system into cards; <strong>not in the calculation for now</strong></td>
 </tr>
 <tr>
@@ -264,12 +264,46 @@
 </tr>
 </tbody>
 </table>
-<p><strong>Some listing samples captured that day (all listed, not sold):</strong></p>
+<p><strong>Dealer listings captured that day (all listed, not sold), USD ranges only:</strong></p>
+<p>To stay consistent with the public small-sample rule, individual listing prices are not published. The ranges below are per-card dealer listings (Genius HPC used, Creative Compute refurbished, AnchorGPU) from the 2026-11-16 pipeline run (run 20261116T212104_PT, 21:21 PT), converted to USD at the day's FX rate and rounded outward to the nearest $1,000. Groups with fewer than 3 listings are not shown.</p>
+<table>
+<thead>
+<tr>
+<th>Bucket</th>
+<th>Listings (n)</th>
+<th>USD range per card</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>H100 SXM</td>
+<td>2</td>
+<td>not shown (n &lt; 3)</td>
+</tr>
+<tr>
+<td>H100 PCIe</td>
+<td>3</td>
+<td>$12,000 – $21,000</td>
+</tr>
+<tr>
+<td>A100 80GB</td>
+<td>4</td>
+<td>$5,000 – $10,000</td>
+</tr>
+<tr>
+<td>A100 40GB</td>
+<td>0</td>
+<td>—</td>
+</tr>
+<tr>
+<td>H100 NVL 94GB</td>
+<td>1</td>
+<td>not shown (n &lt; 3)</td>
+</tr>
+</tbody>
+</table>
 <ul>
-<li>Genius HPC (EUR, ex-VAT, in stock, 18-month warranty): H100 PCIe €10,995.60; H100 SXM €10,348.80 (module only); H100 NVL €18,433.80; A100 80GB PCIe €5,303.76; A100 80GB SXM €6,791.40; DGX H100 (8 cards) €158,466.  </li>
-<li>Creative Compute (GBP, ex-VAT, enquiry): H100 80GB PCIe refurbished £15,750; A100 80GB PCIe refurbished £6,450; 8×A100 system £58,500.  </li>
-<li>AnchorGPU (USD, orders not open): H100 SXM $21,900; H100 PCIe $19,400; A100 SXM 80GB $9,800.  </li>
-<li>ServerPartsDeals: Dell XE9680 8×H100 SXM5 seller-refurbished system listed at $180,000, <strong>currently unavailable</strong>. Simply dividing by 8 gives $22,500/card, but CPUs, memory (32×64GB DDR5), chassis and power supplies must be deducted before it can enter a per-card bucket — <strong>this document does not give an uncalibrated deduction</strong>.  </li>
+<li>8-GPU systems (Genius HPC DGX H100, Creative Compute 8×A100, ServerPartsDeals Dell XE9680 8×H100 — the last one <strong>currently unavailable</strong>): system prices are not published. Simply dividing a system price by 8 is not a per-card price: CPUs, memory (e.g. 32×64GB DDR5), chassis and power supplies must be deducted before a system can enter a per-card bucket — <strong>this document does not give an uncalibrated deduction</strong>.  </li>
 <li>eBay lowest asks relayed by Mulligan: <strong>removed from the public version</strong> (the data derives from eBay listings and inherits eBay's and Mulligan's terms of use; not published without authorization).  </li>
 </ul>
 <p>On the same day, under the same "used H100 PCIe / SXM" label, European dealer ex-VAT listings, UK enquiry prices, US reference prices and third-party eBay asks are <strong>extremely dispersed</strong>. v0 must not squeeze these into one "market price" by simple averaging. This is exactly why observations must be separated by source, by currency and tax basis, and by executability, while waiting for transaction samples.</p>
@@ -332,11 +366,40 @@
 <p><strong>Rental samples (all list prices or market asks, not executed long-term contract transactions unless the source says otherwise):</strong></p>
 <ul>
 <li>Vast.ai medians: <strong>removed from the public version</strong> (use of Vast.ai data in an index / redistribution requires a data licence, data@vast.ai).  </li>
-<li>RunPod Community: H100 SXM $2.69, H100 PCIe $1.99, H100 NVL $2.59, A100 SXM 80GB $1.39, A100 PCIe 80GB $1.19, A100 SXM 40GB $1.00. Secure is higher (H100 SXM $4.39).  </li>
-<li>Lambda: HGX H100 80GB $4.59; H100 SXM $4.69; HGX A100 80GB $3.19; HGX A100 40GB $1.99; 16×H100 cluster (2 weeks–1 year) $6.16/GPU-hour.  </li>
-<li>Other list prices are in the sample CSV (e.g. DigitalOcean HGX H100 on-demand $4.41; CoreWeave 8×H100 node $49.24/hour, ≈ $6.16/GPU-hour; Modal H100 SXM5 $0.001097/second, ≈ $3.95/hour).</li>
+<li>Individual price-list values are not published. The ranges below cover the on-demand / list rents admitted to the income approach in the 2026-11-16 pipeline run (run 20261116T212104_PT; Vast.ai excluded; reserved, spot and unclear-term prices excluded), normalized to USD per GPU-hour (8-GPU node prices divided by 8; per-second prices converted to hours) and rounded outward to $0.10.</li>
 </ul>
-<p>Public asks for the same H100 SXM differ widely between sources (market-style asks are clearly lower than the $4.6+ on some price lists). The income approach must be stratified by <strong>source type (market-style vs price list vs reserved)</strong> and must not be merged into one unlabelled "rent".</p>
+<table>
+<thead>
+<tr>
+<th>Bucket</th>
+<th>Rents (n)</th>
+<th>USD range per GPU-hour</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>H100 SXM</td>
+<td>11</td>
+<td>$1.80 – $6.20</td>
+</tr>
+<tr>
+<td>H100 PCIe</td>
+<td>3</td>
+<td>$1.90 – $2.80</td>
+</tr>
+<tr>
+<td>A100 80GB</td>
+<td>9</td>
+<td>$1.10 – $3.20</td>
+</tr>
+<tr>
+<td>A100 40GB</td>
+<td>4</td>
+<td>$1.00 – $2.10</td>
+</tr>
+</tbody>
+</table>
+<p>Public asks for the same H100 SXM differ several-fold between sources and source types (see the range above). The income approach must be stratified by <strong>source type (market-style vs price list vs reserved)</strong> and must not be merged into one unlabelled "rent".</p>
 <h3 id="43-cost-approach-sources-new-card-anchors-depreciation-lives-credit-terms">4.3 Cost-approach sources (new-card anchors, depreciation lives, credit terms)</h3>
 <table>
 <thead>
@@ -349,7 +412,7 @@
 <tbody>
 <tr>
 <td>Genius HPC "New From"</td>
-<td>Same page as used: H100 PCIe €15,708; H100 SXM €14,784; A100 80GB PCIe €7,576.80; A100 80GB SXM €9,702 (all EUR ex-VAT)</td>
+<td>Same page as used: one ex-VAT "New From" price each for H100 PCIe, H100 SXM, A100 80GB PCIe and A100 80GB SXM, in a non-USD currency (converted to USD; individual values not published, n = 1 per bucket)</td>
 <td><strong>Interim</strong> new-card reference. This is one European dealer's "new from" price, not NVIDIA's official MSRP and not a US channel price.</td>
 </tr>
 <tr>

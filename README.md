@@ -67,6 +67,10 @@ python3 -m http.server -d docs 8000   # open http://localhost:8000
 - The public repository and site contain **only per-model aggregates** (NAV, method values, sample counts and medians, subject to the small-sample rule). They do **not** contain any listing-level or rental observation, per-source raw prices, raw snapshots or the database (see `.gitignore`).
 - Other public price-list sources (RunPod, Lambda, CoreWeave, etc.) still need their terms confirmed one by one before systematic collection.
 
+## Currency
+
+All public prices and values are in **USD only**. Prices from non-USD sources are converted to USD internally at the day's FX rate; no foreign-currency amounts or exchange rates are published. `pipeline/check_public.py` (also run by the workflow) and `export_public.py` refuse to publish if a non-USD currency amount appears in any public file.
+
 ## Disclaimer
 
 This project was created by a high-school student for learning and research purposes. All data are indicative estimates and may be incomplete or wrong. This is not an official index and does not constitute investment, credit or valuation advice. No warranty of accuracy is given.

@@ -56,7 +56,7 @@
       ["As-of date (PT)", esc(L.asof_date_pt || DASH)],
       ["Run ID", esc(L.run_id || DASH)],
       ["Sold transactions today", int(L.sold_count_today)],
-      ["FX", "1 EUR = " + usd(fx.usd_per_eur, 4) + "; 1 GBP = " + usd(fx.usd_per_gbp, 4) + "<br><span class='en'>as of " + fmtPT(fx.asof_utc) + "</span>"],
+      ["Currency", "All values in USD<br><span class='en'>non-USD sources converted at the daily FX rate, as of " + fmtPT(fx.asof_utc) + "</span>"],
       ["Sources", ok + " ok / " + failed + " failed / " + skipped + " skipped"],
       ["Observations (not published)", int(L.observation_count) + (oc ?
         "<br><span class='en'>used officially: market " + int(oc.market) + " · income " + int(oc.income) + " · cost " + int(oc.cost_new) + "</span>" : "")]
