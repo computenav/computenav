@@ -30,3 +30,5 @@ __pycache__/
 .venv/
 venv/
 .DS_Store
+raw_quotes_*.csv
+event_windows_*.json

@@ -86,7 +86,7 @@ jobs:
       - name: Verify nothing private is in the site folder
         run: |
           set -e
-          if find docs \( -name '*.db' -o -name '*.bin' -o -name 'dashboard_data.json' \) | grep -q .; then
+          if find docs \( -name '*.db' -o -name '*.bin' -o -name 'dashboard_data.json' -o -name 'raw_quotes_*' -o -name 'event_windows_*' -o -name '*.csv' \) | grep -q .; then
             echo "private file found under docs/"; exit 1
           fi
           python -c "import json; [json.load(open(f)) for f in ('docs/data/latest.json','docs/data/history.json')]"

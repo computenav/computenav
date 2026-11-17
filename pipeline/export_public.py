@@ -302,11 +302,12 @@ def assert_small_sample(latest_pub: dict, hist: dict) -> None:
 
 def build_latest(priv: dict, allow_observation_only: bool = False) -> dict:
     health = priv.get("source_health") or []
+    obs_only = {o.get("source_id") for o in (priv.get("observation_only_sources") or []) if isinstance(o, dict)}
     # Guard: restricted sources must not have contributed observations.
     for h in health:
         sid = h.get("source_id")
         if sid in LICENCE_RESTRICTED and (h.get("observation_count") or 0) > 0:
-            if allow_observation_only and h.get("observation_only") is True:
+            if allow_observation_only and (h.get("observation_only") is True or sid in obs_only):
                 continue
             raise SystemExit(
                 f"REFUSING TO PUBLISH: licence-restricted source '{sid}' contributed "

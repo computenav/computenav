@@ -14,6 +14,7 @@ Usage:
 
 from __future__ import annotations
 
+import csv
 import hashlib
 import os
 import html as htmlmod
@@ -28,7 +29,7 @@ import traceback
 import urllib.error
 import urllib.parse
 import urllib.request
-from datetime import datetime, timezone
+from datetime import datetime, timezone, date, timedelta, time as dt_time
 from pathlib import Path
 from typing import Any, Optional
 from zoneinfo import ZoneInfo
@@ -290,6 +291,756 @@ MODEL_LABELS = {
     "COMPOSITE": "综合（等权，待校准）",
 }
 
+# Research collections (chip events, raw quotes, age). Not inputs to the v0 official NAV.
+PRICE_HISTORY_STARTS_PT = "2026-11-16"
+AMD_MODELS = ("MI355X", "MI350X", "MI325X", "MI300X", "MI250X", "MI210", "MI250", "MI350P")
+AMD_VRAM_HINT = {
+    "MI300X": 192, "MI325X": 256, "MI350X": 288, "MI355X": 288,
+    "MI250X": 128, "MI210": 64, "MI250": 128,
+}
+NEW_OBS_COLS = [
+    "raw_price_text", "tenor", "region", "quantity_config", "availability",
+    "age_months", "manufacture_date", "first_deploy_date", "age_source",
+    "age_confidence", "vendor", "snapshot_path", "in_official_v0",
+]
+
+# Official vendor/press-release calendar dates only. Quarters without a day stay in notes.
+# Verified 2026-11-17 PT from the cited official pages. No invented numbers or days.
+CHIP_EVENTS_SEED = [
+    {
+        "model": "A100", "vendor": "NVIDIA", "event_type": "announce", "event_date": "2020-05-14",
+        "source_url": "https://nvidianews.nvidia.com/news/nvidias-new-ampere-data-center-gpu-in-full-production",
+        "notes": "GTC 2020 official newsroom PR. Announced the first Ampere-architecture GPU, NVIDIA A100. The same PR says the A100 'is in full production and shipping to customers worldwide.' This launch SKU is the original A100 (40GB); the 80GB SKU was announced later.",
+    },
+    {
+        "model": "A100", "vendor": "NVIDIA", "event_type": "ship", "event_date": "2020-05-14",
+        "source_url": "https://nvidianews.nvidia.com/news/nvidias-new-ampere-data-center-gpu-in-full-production",
+        "notes": "Same 2020-05-14 PR: 'in full production and shipping to customers worldwide.' GA is the same calendar day; no later ship day is stated.",
+    },
+    {
+        "model": "A100 80GB", "vendor": "NVIDIA", "event_type": "announce", "event_date": "2020-11-16",
+        "source_url": "https://nvidianews.nvidia.com/news/nvidia-doubles-down-announces-a100-80gb-gpu-supercharging-worlds-most-powerful-gpu-for-ai-supercomputing",
+        "notes": "SC20 official PR unveiling the A100 80GB GPU. DGX A100 and DGX Station A100 'expected to ship this quarter' (Q4 2020); OEM HGX systems expected in the first half of 2021. No precise ship calendar day is stated, so no ship row is seeded.",
+    },
+    {
+        "model": "H100", "vendor": "NVIDIA", "event_type": "announce", "event_date": "2022-03-22",
+        "source_url": "https://nvidianews.nvidia.com/news/nvidia-announces-hopper-architecture-the-next-generation-of-accelerated-computing",
+        "notes": "GTC official PR announcing the Hopper architecture and the first Hopper-based GPU, NVIDIA H100. The PR says 'NVIDIA H100 will be available starting in the third quarter' (2022) — a quarter, not a calendar day, so no Q3 ship row is seeded.",
+    },
+    {
+        "model": "H100", "vendor": "NVIDIA", "event_type": "ship", "event_date": "2022-09-20",
+        "source_url": "https://nvidianews.nvidia.com/news/nvidia-hopper-in-full-production",
+        "notes": "Official PR: the H100 'is in full production', with global partners 'planning in October to roll out the first wave of products and services'. This row records the full-production announcement date; the October partner rollout has no single calendar day and is not invented.",
+    },
+    {
+        "model": "H200", "vendor": "NVIDIA", "event_type": "announce", "event_date": "2023-11-13",
+        "source_url": "https://nvidianews.nvidia.com/news/nvidia-supercharges-hopper-the-worlds-leading-ai-computing-platform",
+        "notes": "SC23 official PR introducing the NVIDIA HGX H200 / H200 Tensor Core GPU. 'The NVIDIA H200 will be available from global system manufacturers and cloud service providers starting in the second quarter of 2024.' No precise ship calendar day is stated, so no ship row is seeded.",
+    },
+    {
+        "model": "B200", "vendor": "NVIDIA", "event_type": "announce", "event_date": "2024-03-18",
+        "source_url": "https://nvidianews.nvidia.com/news/nvidia-blackwell-platform-arrives-to-power-a-new-era-of-computing",
+        "notes": "GTC official PR announcing the Blackwell platform, including the NVIDIA B200 Tensor Core GPU and the GB200 Grace Blackwell Superchip. A same-day companion PR said DGX SuperPOD with DGX GB200 and DGX B200 systems 'are expected to be available later this year' (2024). No precise ship calendar day is seeded.",
+    },
+    {
+        "model": "B300", "vendor": "NVIDIA", "event_type": "announce", "event_date": "2025-03-18",
+        "source_url": "https://nvidianews.nvidia.com/news/nvidia-blackwell-ultra-ai-factory-platform-paves-way-for-age-of-ai-reasoning",
+        "notes": "GTC official PR announcing NVIDIA Blackwell Ultra, including the HGX B300 NVL16 system and the GB300 NVL72 rack-scale solution. No precise public ship calendar day was verified from this PR at seeding, so no ship row is seeded.",
+    },
+    {
+        "model": "GB300", "vendor": "NVIDIA", "event_type": "announce", "event_date": "2025-03-18",
+        "source_url": "https://nvidianews.nvidia.com/news/nvidia-blackwell-ultra-ai-factory-platform-paves-way-for-age-of-ai-reasoning",
+        "notes": "Same 2025-03-18 Blackwell Ultra PR. GB300 NVL72 is recorded as a distinct label from the HGX B300 board. No precise ship day seeded.",
+    },
+    {
+        "model": "MI250X", "vendor": "AMD", "event_type": "announce", "event_date": "2021-11-08",
+        "source_url": "https://www.amd.com/en/newsroom/press-releases/2021-11-8-new-amd-instinct-mi200-series-accelerators-bring-.html",
+        "notes": "Official AMD PR announcing the Instinct MI200 series, including MI250X as the flagship ('the world’s fastest HPC and AI accelerator'). The PR discusses Frontier as expected to deliver more than 1.5 exaflops, but does not state a precise public calendar day for general shipment, so no ship row is seeded.",
+    },
+    {
+        "model": "MI300X", "vendor": "AMD", "event_type": "announce", "event_date": "2023-06-13",
+        "source_url": "https://www.amd.com/en/newsroom/press-releases/2023-6-13-amd-expands-leadership-data-center-portfolio-with-.html",
+        "notes": "Official AMD 'Data Center and AI Technology Premiere' PR. CEO remarks refer to 'the launch of our Instinct MI300 accelerators planned for later this year' and the PR shares details on the next-generation Instinct products (MI300 series, including MI300X). Later-in-2023 is not a calendar day.",
+    },
+    {
+        "model": "MI300X", "vendor": "AMD", "event_type": "GA", "event_date": "2023-12-06",
+        "source_url": "https://www.amd.com/en/newsroom/press-releases/2023-12-6-amd-delivers-leadership-portfolio-of-data-center-a.html",
+        "notes": "Official AMD PR: 'Today, AMD announced the availability of the AMD Instinct MI300X accelerators.' Recorded as GA/availability (public launch). No separate unexplained day is added.",
+    },
+    {
+        "model": "MI325X", "vendor": "AMD", "event_type": "announce", "event_date": "2024-10-10",
+        "source_url": "https://www.amd.com/en/newsroom/press-releases/2024-10-10-amd-delivers-leadership-ai-performance-with-amd-in.html",
+        "notes": "Official AMD Advancing AI 2024 PR announcing MI325X. 'Currently on track for production shipments in Q4 2024' and 'widespread system availability … starting in Q1 2025' are quarters, not calendar days, so no ship row is seeded. The same PR previewed the MI350 series as 'on track to be available during the second half of 2025.'",
+    },
+    {
+        "model": "MI350X", "vendor": "AMD", "event_type": "announce", "event_date": "2024-10-10",
+        "source_url": "https://www.amd.com/en/newsroom/press-releases/2024-10-10-amd-delivers-leadership-ai-performance-with-amd-in.html",
+        "notes": "Same 2024-10-10 PR: official preview of the next-generation Instinct MI350 series, 'on track to be available during the second half of 2025'. Individual MI350X vs MI355X SKUs are named in the 2025-06-12 launch PR.",
+    },
+    {
+        "model": "MI355X", "vendor": "AMD", "event_type": "announce", "event_date": "2024-10-10",
+        "source_url": "https://www.amd.com/en/newsroom/press-releases/2024-10-10-amd-delivers-leadership-ai-performance-with-amd-in.html",
+        "notes": "Series-level official preview on 2024-10-10 (MI350 series). The MI355X SKU name is confirmed in the 2025-06-12 launch PR; this row records the series preview date, not a fabricated SKU-level reveal day.",
+    },
+    {
+        "model": "MI350X", "vendor": "AMD", "event_type": "launch", "event_date": "2025-06-12",
+        "source_url": "https://ir.amd.com/news-events/press-releases/detail/1255/amd-unveils-vision-for-an-open-ai-ecosystem-detailing-new-silicon-software-and-systems-at-advancing-ai-2025",
+        "notes": "Official AMD Advancing AI 2025 PR (AMD IR / GlobeNewswire, released June 12, 2025). CEO: 'highlighted by the launch of our AMD Instinct MI350 series accelerators.' The series consists of MI350X and MI355X. 'Set for broad availability in 2H 2025' is not a single calendar day, so no ship row is seeded.",
+    },
+    {
+        "model": "MI355X", "vendor": "AMD", "event_type": "launch", "event_date": "2025-06-12",
+        "source_url": "https://ir.amd.com/news-events/press-releases/detail/1255/amd-unveils-vision-for-an-open-ai-ecosystem-detailing-new-silicon-software-and-systems-at-advancing-ai-2025",
+        "notes": "Same 2025-06-12 official launch PR covering MI350X and MI355X. Broad availability in 2H 2025 (no calendar day seeded).",
+    },
+    {
+        "model": "MI400", "vendor": "AMD", "event_type": "announce", "event_date": "2025-06-12",
+        "source_url": "https://ir.amd.com/news-events/press-releases/detail/1255/amd-unveils-vision-for-an-open-ai-ecosystem-detailing-new-silicon-software-and-systems-at-advancing-ai-2025",
+        "notes": "Upcoming product officially previewed in the same 2025-06-12 PR: next-generation Instinct MI400 Series GPUs in the 'Helios' rack-scale design. The PR does not give a public calendar ship or GA day. Seeded as an official upcoming announcement, not as a fabricated availability date.",
+    },
+]
+
+
+def detect_instinct_model(text: str) -> Optional[str]:
+    """Return an Instinct model string observed in text, or None. Does not invent SKUs."""
+    if not text:
+        return None
+    u = re.sub(r"[\s_\-]", "", str(text).upper())
+    # Longer tokens first; do not map MI350P to MI350X.
+    for name in ("MI355X", "MI350X", "MI350P", "MI325X", "MI300X", "MI250X", "MI210"):
+        if name in u:
+            return name
+    if re.search(r"MI250(?!X)", u):
+        return "MI250"
+    return None
+
+
+def is_amd_model(model: Optional[str]) -> bool:
+    m = (model or "").upper().replace(" ", "")
+    return m in AMD_MODELS or bool(re.match(r"^MI\d+", m))
+
+
+def mark_not_in_official_v0(row: dict, reason: str) -> dict:
+    """Force official-leg flags off and tag the reason. Used for AMD and other non-v0 models."""
+    row["include_in_market"] = 0
+    row["include_in_income"] = 0
+    row["include_in_cost_new"] = 0
+    row["in_official_v0"] = 0
+    note = row.get("notes") or ""
+    tag = "【不进入 v0 官方计算】" + reason
+    if "不进入 v0 官方计算" not in note:
+        row["notes"] = (note + " " + tag).strip()
+    return row
+
+
+def parse_age_hints(*texts: Optional[str], asof_date_pt: Optional[str] = None) -> dict:
+    """Parse age/condition hints from listing text. Numeric age is set only when explicitly stated.
+
+    'used' / 'refurbished' / warranty remaining are hints, not invented age_months.
+    """
+    blob = " ".join(t for t in texts if t) or ""
+    if not blob.strip():
+        return {
+            "age_months": None, "manufacture_date": None, "first_deploy_date": None,
+            "age_source": None, "age_confidence": None,
+        }
+    out = {
+        "age_months": None, "manufacture_date": None, "first_deploy_date": None,
+        "age_source": None, "age_confidence": None,
+    }
+    # Explicit age in months or years.
+    m = re.search(r"(?:(?:age|机龄)\s*(?:is|of|:)?\s*)(\d+(?:\.\d+)?)\s*(?:months?|mos?\.?|个月)", blob, re.I)
+    if m:
+        out["age_months"] = float(m.group(1))
+        out["age_source"] = "listing text"
+        out["age_confidence"] = "high"
+    m = re.search(r"(\d+(?:\.\d+)?)\s*(?:-|\s)?(?:years?|yrs?\.?|年)\s*old", blob, re.I)
+    if m and out["age_months"] is None:
+        out["age_months"] = float(m.group(1)) * 12.0
+        out["age_source"] = "listing text"
+        out["age_confidence"] = "high"
+    m = re.search(
+        r"(?:manufactured(?:\s+in)?|manufacture(?:d)?\s*date|date\s*of\s*manufacture|生产(?:日期)?|出厂(?:日期)?)\s*[:\s]*((?:19|20)\d{2}(?:[-/]\d{1,2}){0,2})",
+        blob, re.I,
+    )
+    if m:
+        out["manufacture_date"] = m.group(1).replace("/", "-")
+        out["age_source"] = out["age_source"] or "listing text"
+        if out["age_confidence"] != "high":
+            out["age_confidence"] = "medium"
+    m = re.search(
+        r"(?:first\s+deploy(?:ed|ment)?|deployed(?:\s+in)?|首次部署|投入(?:使用)?)\s*[:\s]*((?:19|20)\d{2}(?:[-/]\d{1,2}){0,2})",
+        blob, re.I,
+    )
+    if m:
+        out["first_deploy_date"] = m.group(1).replace("/", "-")
+        out["age_source"] = "listing text" if "deploy" in (m.group(0) or "").lower() or "部署" in m.group(0) else (out["age_source"] or "listing text")
+        if "seller" in blob.lower() or "卖家" in blob:
+            out["age_source"] = "seller statement"
+        if out["age_confidence"] != "high":
+            out["age_confidence"] = "medium"
+    # Serial-number claims (only if the text itself says the age/date came from a serial).
+    if re.search(r"\bserial\b|\bS/?N\b|序列号", blob, re.I) and (out["manufacture_date"] or out["age_months"] is not None):
+        out["age_source"] = "serial"
+    # Condition / warranty / cluster-pull hints: record source, never invent months.
+    hint = bool(re.search(
+        r"(?<![A-Za-z])(?:used|refurbished|refurb|pull(?:ed)?\s+from(?:\s+(?:a|the))?\s+cluster|seller[_\s-]?refurbished|used[_\s-]?tested)(?![A-Za-z])|翻新|二手|拆机|集群拆下|下架|已测",
+        blob, re.I,
+    ))
+    warrant = re.search(r"(\d+)\s*[- ]?(?:month|mos?\.?|个月)\s*(?:warranty|质保)", blob, re.I)
+    if out["age_months"] is None and out["manufacture_date"] is None and out["first_deploy_date"] is None:
+        if hint or warrant:
+            out["age_source"] = "listing text"
+            out["age_confidence"] = "low"
+            # warranty remaining is a hint only; original warranty length is unknown, so age_months stays null.
+    return out
+
+
+def infer_tenor(row: dict) -> Optional[str]:
+    if row.get("tenor"):
+        return row["tenor"]
+    blob = " ".join(str(x) for x in (
+        row.get("raw_label"), row.get("notes"), row.get("observation_type"), row.get("sold_vs_listed"),
+    ) if x)
+    low = blob.lower()
+    if re.search(r"spot|现货", low):
+        return "spot"
+    if re.search(r"reserv|预留|12\s*mo|12\s*month|1-year|1 year|2 weeks|期限", low):
+        if re.search(r"tenor unconfirmed|期限（按需/预留）未|期限未确认", blob, re.I):
+            return "unconfirmed"
+        return "reserved"
+    if re.search(r"on[- ]?demand|按需", low):
+        return "on-demand"
+    if re.search(r"term\b|合同|committed", low):
+        return "term"
+    if re.search(r"tenor unconfirmed|期限未确认", low):
+        return "unconfirmed"
+    return None
+
+
+def infer_raw_price_text(row: dict) -> Optional[str]:
+    if row.get("raw_price_text"):
+        return row["raw_price_text"]
+    label = row.get("raw_label") or ""
+    m = re.search(r"(€\s?[0-9,]+(?:\.\d+)?|£\s?[0-9,]+(?:\.\d+)?|\$\s?[0-9,]+(?:\.\d+)?(?:\s*/\s*(?:hr|hour|sec|GPU-hr|GPU/hour))?)", label)
+    if m:
+        return m.group(1).strip()
+    if row.get("price") is None:
+        return None
+    ccy = (row.get("currency") or "").upper()
+    price = row["price"]
+    unit = row.get("unit") or ""
+    sym = {"USD": "$", "EUR": "€", "GBP": "£"}.get(ccy, ccy + " ")
+    suffix = ""
+    if "hour" in unit or unit.endswith("_hour"):
+        suffix = "/hr"
+    elif unit == "per_second":
+        suffix = "/sec"
+    try:
+        if float(price) >= 100:
+            return f"{sym}{float(price):,.2f}{suffix}"
+        return f"{sym}{float(price)}{suffix}"
+    except (TypeError, ValueError):
+        return None
+
+
+def infer_availability(row: dict) -> Optional[str]:
+    if row.get("availability"):
+        return row["availability"]
+    blob = " ".join(str(x) for x in (row.get("notes"), row.get("raw_label"), row.get("observation_type")) if x)
+    m = re.search(r"stock=([A-Za-z]+)", blob)
+    if m:
+        return m.group(1)
+    m = re.search(r"available=(True|False|true|false)", blob)
+    if m:
+        return "available" if m.group(1).lower() == "true" else "unavailable"
+    if re.search(r"contact sales|联系销售", blob, re.I):
+        return "contact_sales"
+    if re.search(r"in stock|在库", blob, re.I):
+        return "in_stock"
+    if "listed_unavailable" in (row.get("observation_type") or ""):
+        return "unavailable"
+    return None
+
+
+def infer_quantity_config(row: dict) -> Optional[str]:
+    if row.get("quantity_config"):
+        return row["quantity_config"]
+    unit = row.get("unit") or ""
+    if unit == "per_8gpu_server":
+        return "8-gpu server"
+    if unit == "per_8gpu_hour":
+        return "8-gpu node; per-card hour derived"
+    blob = " ".join(str(x) for x in (row.get("notes"), row.get("raw_label")) if x)
+    m = re.search(r"num_gpus=(\d+)", blob)
+    if m:
+        return f"{m.group(1)} gpu"
+    m = re.search(r"(\d+)\s*[×x]\s*(?:H100|A100|GPU|gpu)", blob)
+    if m:
+        return f"{m.group(1)}-gpu"
+    m = re.search(r"Choose between (\d+) or (\d+) GPU", blob, re.I)
+    if m:
+        return f"{m.group(1)} or {m.group(2)} GPUs per droplet"
+    return None
+
+
+def infer_region(row: dict) -> Optional[str]:
+    if row.get("region"):
+        return row["region"]
+    blob = " ".join(str(x) for x in (row.get("notes"), row.get("raw_label")) if x)
+    m = re.search(r"\bloc=([^。;]+)", blob)
+    if m:
+        return m.group(1).strip()
+    m = re.search(r"\(([A-Za-z .]+,\s*[A-Z]{2})\)", row.get("raw_label") or "")
+    if m:
+        return m.group(1).strip()
+    return None
+
+
+def set_in_official_v0(row: dict) -> dict:
+    official = (
+        row.get("model_key") in MODEL_KEYS
+        and row.get("source_id") not in OBSERVATION_ONLY_SOURCES
+        and (
+            bool(row.get("include_in_market"))
+            or bool(row.get("include_in_income"))
+            or bool(row.get("include_in_cost_new"))
+        )
+    )
+    row["in_official_v0"] = 1 if official else 0
+    return row
+
+
+def enrich_observation(row: dict, snapshot_path: Optional[str] = None) -> dict:
+    """Fill research fields without changing official-leg prices, keys, or inclusion flags for v0 models."""
+    if is_amd_model(row.get("model")) or (row.get("model_key") in AMD_MODELS):
+        mark_not_in_official_v0(row, "AMD 观察，仅作研究/校准，不进入 v0 官方计算。")
+        row["vendor"] = row.get("vendor") or "AMD"
+        if not row.get("form_factor") and row.get("model") in {"MI300X", "MI325X", "MI350X", "MI355X", "MI250X", "MI250"}:
+            # OAM is the usual Instinct form, but only fill when the source already implied it or left it blank
+            # after a parser that knew the form. Leave blank rather than invent if truly unknown.
+            pass
+        if row.get("vram_gb") is None and row.get("model") in AMD_VRAM_HINT:
+            # Do not invent VRAM from a spec sheet if the source did not state it.
+            pass
+    elif (row.get("model") or "").upper() in {"H100", "A100", "H200", "B200", "B300", "GB300"}:
+        row["vendor"] = row.get("vendor") or "NVIDIA"
+    if not row.get("tenor"):
+        row["tenor"] = infer_tenor(row)
+    if not row.get("raw_price_text"):
+        row["raw_price_text"] = infer_raw_price_text(row)
+    if not row.get("availability"):
+        row["availability"] = infer_availability(row)
+    if not row.get("quantity_config"):
+        row["quantity_config"] = infer_quantity_config(row)
+    if not row.get("region"):
+        row["region"] = infer_region(row)
+    age = parse_age_hints(
+        row.get("raw_label"), row.get("notes"), row.get("condition"),
+        asof_date_pt=row.get("asof_date_pt"),
+    )
+    for k, v in age.items():
+        if row.get(k) in (None, ""):
+            row[k] = v
+    if snapshot_path and not row.get("snapshot_path"):
+        row["snapshot_path"] = snapshot_path
+    set_in_official_v0(row)
+    return row
+
+
+def observation_natural_key(row: dict) -> tuple:
+    def _n(v):
+        if v is None:
+            return None
+        if isinstance(v, float):
+            return round(v, 10)
+        return v
+    return (
+        row.get("source_id"),
+        row.get("observation_type"),
+        row.get("raw_label"),
+        _n(row.get("price")),
+        row.get("unit"),
+        row.get("model"),
+        row.get("form_factor"),
+        row.get("vram_gb"),
+    )
+
+
+def migrate_schema(conn: sqlite3.Connection) -> None:
+    existing = {r[1] for r in conn.execute("PRAGMA table_info(observations)").fetchall()}
+    col_sql = {
+        "raw_price_text": "TEXT",
+        "tenor": "TEXT",
+        "region": "TEXT",
+        "quantity_config": "TEXT",
+        "availability": "TEXT",
+        "age_months": "REAL",
+        "manufacture_date": "TEXT",
+        "first_deploy_date": "TEXT",
+        "age_source": "TEXT",
+        "age_confidence": "TEXT",
+        "vendor": "TEXT",
+        "snapshot_path": "TEXT",
+        "in_official_v0": "INTEGER NOT NULL DEFAULT 0",
+    }
+    for col, typ in col_sql.items():
+        if col not in existing:
+            conn.execute(f"ALTER TABLE observations ADD COLUMN {col} {typ}")
+    conn.executescript(
+        """
+CREATE TABLE IF NOT EXISTS chip_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    model TEXT NOT NULL,
+    vendor TEXT NOT NULL,
+    event_type TEXT NOT NULL,
+    event_date TEXT,
+    source_url TEXT,
+    notes TEXT,
+    verified_on_pt TEXT,
+    UNIQUE(model, vendor, event_type, event_date, source_url)
+);
+CREATE INDEX IF NOT EXISTS idx_chip_events_date ON chip_events(event_date);
+CREATE INDEX IF NOT EXISTS idx_obs_model_date ON observations(model, asof_date_pt);
+"""
+    )
+    conn.execute(
+        """
+CREATE VIEW IF NOT EXISTS event_window_observations AS
+SELECT
+    e.id AS event_id,
+    e.model AS event_model,
+    e.vendor AS event_vendor,
+    e.event_type,
+    e.event_date,
+    CAST(julianday(o.asof_date_pt) - julianday(e.event_date) AS INTEGER) AS days_from_event,
+    o.id AS observation_id,
+    o.run_id,
+    o.asof_date_pt,
+    o.model,
+    o.model_key,
+    o.vendor,
+    o.source_id,
+    o.source_name,
+    o.source_url,
+    o.observation_type,
+    o.sold_vs_listed,
+    o.tenor,
+    o.form_factor,
+    o.vram_gb,
+    o.condition,
+    o.currency,
+    o.price,
+    o.unit,
+    o.usd_price,
+    o.usd_per_card,
+    o.usd_per_gpu_hour,
+    o.include_in_market,
+    o.include_in_income,
+    o.include_in_cost_new,
+    o.in_official_v0,
+    o.snapshot_hash,
+    o.snapshot_path,
+    CASE WHEN o.asof_date_pt >= '2026-11-16' THEN 1 ELSE 0 END AS within_observed_history,
+    'Price history only exists from 2026-11-16 PT onward; earlier window days are not backfilled.' AS history_note
+FROM chip_events e
+JOIN observations o
+  ON e.event_date IS NOT NULL
+ AND o.asof_date_pt BETWEEN date(e.event_date, '-90 days') AND date(e.event_date, '+180 days')
+ AND (
+        o.model = e.model
+     OR (e.model = 'A100 80GB' AND o.model_key = 'A100_80GB')
+     OR (e.model = 'A100' AND o.model = 'A100')
+     OR (e.model = 'H100' AND o.model = 'H100')
+     OR (e.model IN ('B300','GB300') AND o.model IN ('B300','GB300'))
+     OR (e.model = o.model_key)
+     OR (e.model = 'MI400' AND o.model LIKE 'MI400%')
+ )
+WHERE e.event_date IS NOT NULL;
+"""
+    )
+    conn.commit()
+
+
+def seed_chip_events(conn: sqlite3.Connection, verified_on_pt: str = "2026-11-17") -> int:
+    q = (
+        "INSERT OR IGNORE INTO chip_events "
+        "(model, vendor, event_type, event_date, source_url, notes, verified_on_pt) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?)"
+    )
+    rows = [
+        (e["model"], e["vendor"], e["event_type"], e["event_date"], e["source_url"], e["notes"], verified_on_pt)
+        for e in CHIP_EVENTS_SEED
+    ]
+    before = conn.execute("SELECT COUNT(*) FROM chip_events").fetchone()[0]
+    conn.executemany(q, rows)
+    conn.commit()
+    after = conn.execute("SELECT COUNT(*) FROM chip_events").fetchone()[0]
+    return after - before
+
+
+def export_raw_quotes(conn: sqlite3.Connection, asof_date_pt: str, run_id: Optional[str] = None) -> Path:
+    """Write every fetched observation (official and observation-only) for the date."""
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    path = OUTPUT_DIR / f"raw_quotes_{asof_date_pt}.csv"
+    if run_id:
+        rows = [dict(r) for r in conn.execute(
+            "SELECT * FROM observations WHERE run_id=? ORDER BY source_id, id", (run_id,)
+        ).fetchall()]
+    else:
+        rows = [dict(r) for r in conn.execute(
+            "SELECT * FROM observations WHERE asof_date_pt=? ORDER BY run_id, source_id, id",
+            (asof_date_pt,),
+        ).fetchall()]
+    fields = [
+        "id", "run_id", "asof_date_pt", "observed_at_utc",
+        "source_id", "source_name", "source_url",
+        "observation_type", "sold_vs_listed",
+        "vendor", "model", "model_key", "form_factor", "vram_gb",
+        "condition", "raw_price_text", "currency", "price", "unit",
+        "usd_price", "usd_per_card", "usd_per_gpu_hour",
+        "fx_usd_per_unit", "fx_source", "fx_asof_utc",
+        "tenor", "region", "quantity_config", "availability",
+        "age_months", "manufacture_date", "first_deploy_date", "age_source", "age_confidence",
+        "include_in_market", "include_in_income", "include_in_cost_new", "in_official_v0",
+        "raw_label", "notes", "snapshot_hash", "snapshot_path", "snapshot_id",
+    ]
+    with path.open("w", newline="", encoding="utf-8") as f:
+        w = csv.DictWriter(f, fieldnames=fields, extrasaction="ignore")
+        w.writeheader()
+        for r in rows:
+            w.writerow({k: r.get(k) for k in fields})
+    log.info("wrote raw quotes %s rows=%s", path, len(rows))
+    return path
+
+
+def write_event_windows(conn: sqlite3.Connection, asof_date_pt: str) -> Path:
+    """For each chip event, emit T-90..T+180 daily per-model series from observations.
+
+    Days before PRICE_HISTORY_STARTS_PT are included as calendar placeholders with
+    null prices and within_observed_history=0. No invented backfill.
+    """
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    path = OUTPUT_DIR / f"event_windows_{asof_date_pt}.json"
+    events = [dict(r) for r in conn.execute(
+        "SELECT * FROM chip_events WHERE event_date IS NOT NULL ORDER BY event_date, vendor, model, event_type"
+    ).fetchall()]
+    # Daily aggregates already observed.
+    obs_rows = [dict(r) for r in conn.execute(
+        """
+        SELECT asof_date_pt, model, model_key, vendor,
+               COUNT(*) AS n,
+               SUM(CASE WHEN usd_per_card IS NOT NULL THEN 1 ELSE 0 END) AS n_card,
+               SUM(CASE WHEN usd_per_gpu_hour IS NOT NULL THEN 1 ELSE 0 END) AS n_rental,
+               AVG(usd_per_card) AS mean_usd_per_card,
+               AVG(usd_per_gpu_hour) AS mean_usd_per_gpu_hour,
+               MIN(usd_per_card) AS min_usd_per_card,
+               MAX(usd_per_card) AS max_usd_per_card,
+               MIN(usd_per_gpu_hour) AS min_usd_per_gpu_hour,
+               MAX(usd_per_gpu_hour) AS max_usd_per_gpu_hour
+        FROM observations
+        GROUP BY asof_date_pt, model, model_key, vendor
+        """
+    ).fetchall()]
+
+    def matches_event(e, o):
+        if e["model"] == "A100 80GB":
+            return o.get("model_key") == "A100_80GB" or (o.get("model") == "A100" and o.get("model_key") == "A100_80GB")
+        if e["model"] == "A100":
+            return o.get("model") == "A100"
+        if e["model"] == "H100":
+            return o.get("model") == "H100"
+        if e["model"] in {"B300", "GB300"}:
+            return o.get("model") in {"B300", "GB300"} or (o.get("model_key") or "") in {"B300", "GB300"}
+        if e["model"] == "MI400":
+            return (o.get("model") or "").startswith("MI400")
+        return o.get("model") == e["model"] or o.get("model_key") == e["model"]
+
+    start_hist = date.fromisoformat(PRICE_HISTORY_STARTS_PT)
+    payload = {
+        "asof_date_pt": asof_date_pt,
+        "price_history_starts_pt": PRICE_HISTORY_STARTS_PT,
+        "history_note_zh": "价格历史仅从 2026-11-16 PT（管线首次观察日）起存在；事件窗口 T-90 至 T+180 中早于该日的日期保留为日历位，价格为空，不做发明式回填。",
+        "wayback_option_zh": (
+            "可选但本次未实施：若某一已许可的官方经销商或租赁商公开页面在 Internet Archive Wayback Machine 上有快照，"
+            "且该来源的条款允许为指数研究保存历史公开页，可用这些快照回填窗口内、2026-11-16 之前的观察。"
+            "Wayback 快照仍须走与现网相同的解析、竞品排除和许可规则，并记录原始 archive.org URL 与时间戳。"
+            "条款不明或不允许的来源不得回填。本次没有实施回填，也没有把任何 Wayback 数据写入观察库。"
+        ),
+        "window": {"days_before": 90, "days_after": 180},
+        "events": [],
+    }
+    for e in events:
+        ev_d = date.fromisoformat(e["event_date"])
+        series = []
+        for delta in range(-90, 181):
+            d = ev_d + timedelta(days=delta)
+            ds = d.isoformat()
+            in_hist = d >= start_hist
+            day_obs = [o for o in obs_rows if o["asof_date_pt"] == ds and matches_event(e, o)] if in_hist else []
+            series.append({
+                "date_pt": ds,
+                "days_from_event": delta,
+                "within_observed_history": in_hist,
+                "observations_n": int(sum(o["n"] or 0 for o in day_obs)) if day_obs else (0 if in_hist else None),
+                "n_card": int(sum(o["n_card"] or 0 for o in day_obs)) if day_obs else (0 if in_hist else None),
+                "n_rental": int(sum(o["n_rental"] or 0 for o in day_obs)) if day_obs else (0 if in_hist else None),
+                "mean_usd_per_card": None if not day_obs else (sum((o["mean_usd_per_card"] or 0) * (o["n_card"] or 0) for o in day_obs) / sum(o["n_card"] or 0 for o in day_obs) if sum(o["n_card"] or 0 for o in day_obs) else None),
+                "mean_usd_per_gpu_hour": None if not day_obs else (sum((o["mean_usd_per_gpu_hour"] or 0) * (o["n_rental"] or 0) for o in day_obs) / sum(o["n_rental"] or 0 for o in day_obs) if sum(o["n_rental"] or 0 for o in day_obs) else None),
+                "models_present": sorted({(o["model_key"] or o["model"]) for o in day_obs if o.get("model") or o.get("model_key")}) if day_obs else [],
+            })
+        n_hist = sum(1 for p in series if p["within_observed_history"])
+        n_with = sum(1 for p in series if p["within_observed_history"] and (p["observations_n"] or 0) > 0)
+        payload["events"].append({
+            "event_id": e["id"],
+            "model": e["model"],
+            "vendor": e["vendor"],
+            "event_type": e["event_type"],
+            "event_date": e["event_date"],
+            "source_url": e["source_url"],
+            "notes": e["notes"],
+            "window_start_pt": series[0]["date_pt"],
+            "window_end_pt": series[-1]["date_pt"],
+            "days_in_observed_history": n_hist,
+            "days_with_observations": n_with,
+            "daily": series,
+        })
+    path.write_text(json.dumps(payload, indent=2, ensure_ascii=False, default=str))
+    log.info("wrote event windows %s events=%s", path, len(events))
+    return path
+
+
+def _snapshot_rec_for_parse(conn: sqlite3.Connection, run_id: str, source_id: str) -> Optional[dict]:
+    row = conn.execute(
+        "SELECT * FROM snapshots WHERE run_id=? AND source_id=? ORDER BY id DESC LIMIT 1",
+        (run_id, source_id),
+    ).fetchone()
+    if not row:
+        return None
+    d = dict(row)
+    path = d.get("path")
+    body = b""
+    if path and Path(path).exists():
+        body = Path(path).read_bytes()
+    else:
+        fallback = SNAPSHOT_ROOT / run_id / f"{source_id}.bin"
+        if fallback.exists():
+            body = fallback.read_bytes()
+            path = str(fallback)
+    if not body:
+        return None
+    return {
+        "source_id": source_id,
+        "url": d.get("url"),
+        "method": d.get("method") or "GET",
+        "ok": bool(d.get("ok")),
+        "status": d.get("http_status"),
+        "error": d.get("error"),
+        "body": body,
+        "sha256": d.get("sha256"),
+        "byte_count": d.get("byte_count") or len(body),
+        "fetched_at_utc": d.get("fetched_at_utc"),
+        "path": path,
+        "snapshot_id": d.get("id"),
+    }
+
+
+def backfill_from_snapshots(conn: sqlite3.Connection, run_id: str, fx: "FX") -> dict:
+    """Re-parse archived snapshots: enrich existing rows; insert newly extracted (e.g. AMD) rows.
+
+    Does not delete rows and does not change official v0 inclusion flags or prices on existing NVIDIA rows.
+    """
+    existing = [dict(r) for r in conn.execute(
+        "SELECT * FROM observations WHERE run_id=? ORDER BY id", (run_id,)
+    ).fetchall()]
+    if not existing:
+        return {"updated": 0, "inserted": 0}
+    asof = existing[0]["asof_date_pt"]
+    by_key = {}
+    for r in existing:
+        by_key.setdefault(observation_natural_key(r), []).append(r)
+
+    # Enrich existing rows in place (new columns only).
+    updated = 0
+    snap_paths = {r["source_id"]: r["path"] for r in conn.execute(
+        "SELECT source_id, path FROM snapshots WHERE run_id=?", (run_id,)
+    ).fetchall()}
+    for r in existing:
+        before = {c: r.get(c) for c in NEW_OBS_COLS}
+        # Preserve official flags / prices / model_key.
+        flags = (r.get("include_in_market"), r.get("include_in_income"), r.get("include_in_cost_new"), r.get("model_key"), r.get("price"), r.get("usd_per_card"), r.get("usd_per_gpu_hour"))
+        enrich_observation(r, snapshot_path=r.get("snapshot_path") or snap_paths.get(r.get("source_id")))
+        # Restore flags and prices if this is a v0 NVIDIA official-key row or any pre-existing row.
+        # Existing rows keep their stored official flags and numeric prices.
+        r["include_in_market"], r["include_in_income"], r["include_in_cost_new"], r["model_key"], r["price"], r["usd_per_card"], r["usd_per_gpu_hour"] = flags
+        if is_amd_model(r.get("model")):
+            mark_not_in_official_v0(r, "AMD 观察，仅作研究/校准，不进入 v0 官方计算。")
+        set_in_official_v0(r)
+        after = {c: r.get(c) for c in NEW_OBS_COLS}
+        if after != before:
+            sets = ", ".join(f"{c}=?" for c in NEW_OBS_COLS)
+            conn.execute(
+                f"UPDATE observations SET {sets} WHERE id=?",
+                [r.get(c) for c in NEW_OBS_COLS] + [r["id"]],
+            )
+            updated += 1
+
+    inserted = 0
+    for src in SOURCE_PLAN:
+        parser = src.get("parser")
+        if not parser:
+            continue
+        rec = _snapshot_rec_for_parse(conn, run_id, src["id"])
+        if not rec or not rec.get("ok"):
+            continue
+        try:
+            rows = parser(rec, fx) or []
+        except Exception:
+            log.exception("backfill parse failed for %s run %s", src["id"], run_id)
+            continue
+        for row in rows:
+            row["run_id"] = run_id
+            row["snapshot_id"] = rec.get("snapshot_id")
+            row["snapshot_hash"] = rec.get("sha256")
+            row["snapshot_path"] = rec.get("path")
+            row["observed_at_utc"] = rec.get("fetched_at_utc")
+            row["asof_date_pt"] = asof
+            if not row.get("source_id"):
+                row["source_id"] = src["id"]
+            if not row.get("source_url"):
+                row["source_url"] = rec.get("url")
+            mark_observation_only(row)
+            enrich_observation(row, snapshot_path=rec.get("path"))
+            key = observation_natural_key(row)
+            if key in by_key:
+                continue
+            # New row (typically AMD). Never enter v0 official calc unless it is a pre-existing NVIDIA official key
+            # with flags already set — new extracts that are not already stored stay research-only if AMD.
+            if is_amd_model(row.get("model")) or (row.get("model_key") not in MODEL_KEYS):
+                if row.get("model_key") not in MODEL_KEYS:
+                    # Keep include flags as the parser set them only for NVIDIA v0 keys that somehow were missed.
+                    # For non-v0 keys, force off.
+                    if row.get("model_key") not in MODEL_KEYS:
+                        row["include_in_market"] = 0 if is_amd_model(row.get("model")) or row.get("model_key") not in MODEL_KEYS else row.get("include_in_market")
+                        # The line above is messy. Clearer:
+                        pass
+                if row.get("model_key") not in MODEL_KEYS:
+                    row["include_in_market"] = 0
+                    row["include_in_income"] = 0
+                    row["include_in_cost_new"] = 0
+            mark_observation_only(row)
+            set_in_official_v0(row)
+            if competitor_exclusion_reason(row.get("source_id"), row.get("source_name"), row.get("source_url")):
+                continue
+            insert_observations(conn, [row])
+            by_key.setdefault(key, []).append(row)
+            inserted += 1
+            log.info("backfill inserted %s %s", row.get("source_id"), row.get("raw_label"))
+    conn.commit()
+    log.info("backfill run_id=%s updated_cols=%s inserted=%s", run_id, updated, inserted)
+    return {"updated": updated, "inserted": inserted}
+
+
+
 log = logging.getLogger("computenav")
 
 
@@ -434,6 +1185,8 @@ def connect_db() -> sqlite3.Connection:
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     conn.executescript(SCHEMA)
+    migrate_schema(conn)
+    seed_chip_events(conn)
     return conn
 
 
@@ -525,6 +1278,9 @@ def obs(**kwargs) -> dict:
         fx_usd_per_unit=None, fx_source=None, fx_asof_utc=None, notes="",
         include_in_market=0, include_in_income=0, include_in_cost_new=0,
         model_key=None, raw_label=None, source_name=None, source_url=None, source_id=None,
+        raw_price_text=None, tenor=None, region=None, quantity_config=None, availability=None,
+        age_months=None, manufacture_date=None, first_deploy_date=None,
+        age_source=None, age_confidence=None, vendor=None, snapshot_path=None, in_official_v0=0,
     )
     base.update(kwargs)
     return base
@@ -566,6 +1322,16 @@ def assign_model_key(row: dict) -> dict:
             key = "A100_40GB"
         elif vram == 80:
             key = "A100_80GB"
+    else:
+        inst = detect_instinct_model(model) or detect_instinct_model(row.get("model") or "")
+        if inst:
+            key = inst
+            row["vendor"] = row.get("vendor") or "AMD"
+            row["model"] = inst if not row.get("model") else row.get("model")
+            if (row.get("model") or "").upper().replace(" ", "") != inst:
+                row["model"] = inst
+    if key in MODEL_KEYS or (row.get("model") or "").upper() in {"H100", "A100"}:
+        row["vendor"] = row.get("vendor") or "NVIDIA"
     row["model_key"] = key
     return row
 
@@ -646,7 +1412,7 @@ def parse_genius(rec, fx):
                 raw_label=f"Genius HPC New From {model} {form} {vram}GB €{new_price:,.2f}",
             )), fx))
         if new_price and is_server:
-            out.append(attach_fx(assign_model_key(obs(
+            out.append(enrich_observation(attach_fx(assign_model_key(obs(
                 source_id="geniushpc", source_name="Genius HPC New From", source_url=rec["url"],
                 observation_type="new_from_list_server", sold_vs_listed="new_list",
                 model=model, form_factor=form, vram_gb=vram, condition="new_server",
@@ -654,7 +1420,48 @@ def parse_genius(rec, fx):
                 notes="DGX H100 新机 New From，8 卡整机，未扣除主机部件，不进入官方单卡成本法锚点。",
                 include_in_cost_new=0,
                 raw_label=f"Genius HPC New From DGX H100 €{new_price:,.2f}",
-            )), fx))
+                raw_price_text=f"€{new_price:,.2f}",
+                quantity_config="8-gpu server",
+            )), fx)))
+    # AMD Instinct *card* SKUs only. Skip chassis lines that merely list MI210/MI350P as a compatible option
+    # (those prices are for a configured server, often with other GPUs installed).
+    for m in re.finditer(
+        r"AMD(?: Instinct)?.{0,40}?(MI(?:355X|350X|325X|300X|250X|210))\s+"
+        r"(.{0,80}?)Used & tested €([0-9,.]+)\s*ex-VAT New From €([0-9,.]+)",
+        txt,
+    ):
+        name_ctx = (m.group(0) + " " + m.group(2))
+        if re.search(r"Depends on selected| / | /", name_ctx) and re.search(r"H100|L40|RTX|H200|NVL", name_ctx):
+            continue
+        inst = detect_instinct_model(m.group(1))
+        if not inst:
+            continue
+        used_price = money_to_float(m.group(3))
+        new_price = money_to_float(m.group(4))
+        form = "PCIe" if inst == "MI210" else "OAM"
+        vram = AMD_VRAM_HINT.get(inst)
+        if used_price:
+            out.append(enrich_observation(attach_fx(assign_model_key(obs(
+                source_id="geniushpc", source_name="Genius HPC secondary market", source_url=rec["url"],
+                observation_type="listed", sold_vs_listed="listed",
+                model=inst, form_factor=form, vram_gb=vram, condition="used_tested",
+                currency="EUR", price=used_price, unit="per_card", vendor="AMD",
+                raw_price_text=f"€{used_price:,.2f}",
+                notes="未税欧元，在库/质保以页面为准。经销商挂牌，非成交。【不进入 v0 官方计算】AMD 观察，仅作研究/校准。",
+                include_in_market=0,
+                raw_label=f"Genius HPC {inst} €{used_price:,.2f} ex-VAT used",
+            )), fx)))
+        if new_price:
+            out.append(enrich_observation(attach_fx(assign_model_key(obs(
+                source_id="geniushpc", source_name="Genius HPC New From", source_url=rec["url"],
+                observation_type="new_from_list", sold_vs_listed="new_list",
+                model=inst, form_factor=form, vram_gb=vram, condition="new",
+                currency="EUR", price=new_price, unit="per_card", vendor="AMD",
+                raw_price_text=f"€{new_price:,.2f}",
+                notes="经销商 New From 起价，未税欧元。【不进入 v0 官方计算】AMD 观察，仅作研究/校准。",
+                include_in_cost_new=0,
+                raw_label=f"Genius HPC New From {inst} €{new_price:,.2f}",
+            )), fx)))
     return out
 
 
@@ -868,7 +1675,40 @@ def parse_runpod(rec, fx):
     for t in types:
         name = t.get("displayName") or t.get("id") or ""
         uname = name.upper()
-        if "H100" not in uname and "A100" not in uname:
+        inst = detect_instinct_model(uname + " " + (t.get("id") or "") + " " + name)
+        if "H100" not in uname and "A100" not in uname and not inst:
+            continue
+        if inst:
+            model = inst
+            form = None
+            idu = (t.get("id") or "").upper()
+            if "OAM" in uname or "OAM" in idu:
+                form = "OAM"
+            elif "PCI" in uname or "PCI" in idu:
+                form = "PCIe"
+            vram = t.get("memoryInGb")
+            for field, label, include in (("communityPrice", "community", False), ("securePrice", "secure", False)):
+                price = t.get(field)
+                if not price or float(price) <= 0:
+                    continue
+                stock = ((t.get("lowestPrice") or {}).get("stockStatus"))
+                bid = (t.get("lowestPrice") or {}).get("minimumBidPrice")
+                unint = (t.get("lowestPrice") or {}).get("uninterruptablePrice")
+                tenor = "spot" if (bid or (unint is not None and field == "communityPrice" and float(price) == float(unint or 0))) else "on-demand"
+                row = attach_fx(assign_model_key(obs(
+                    source_id="runpod", source_name="RunPod GraphQL gpuTypes", source_url=rec["url"],
+                    observation_type="rental_list", sold_vs_listed="rental_list",
+                    model=model, form_factor=form, vram_gb=vram, currency="USD",
+                    price=float(price), unit="per_gpu_hour",
+                    tenor="on-demand",
+                    availability=stock,
+                    raw_price_text=f"${float(price):.2f}/hr",
+                    notes=f"{label} list; stock={stock}。Secure/Community 仅作观察。【不进入 v0 官方计算】AMD 观察，仅作研究/校准。",
+                    include_in_income=0,
+                    vendor="AMD",
+                    raw_label=f"RunPod {label} {name} {vram}GB ${float(price):.2f}/hr",
+                )), fx)
+                out.append(enrich_observation(mark_not_in_official_v0(row, "AMD 观察，仅作研究/校准，不进入 v0 官方计算。")))
             continue
         model = "H100" if "H100" in uname else "A100"
         form = None
@@ -884,27 +1724,34 @@ def parse_runpod(rec, fx):
             if not price or float(price) <= 0:
                 continue
             stock = ((t.get("lowestPrice") or {}).get("stockStatus"))
-            out.append(attach_fx(assign_model_key(obs(
+            out.append(enrich_observation(attach_fx(assign_model_key(obs(
                 source_id="runpod", source_name="RunPod GraphQL gpuTypes", source_url=rec["url"],
                 observation_type="rental_list", sold_vs_listed="rental_list",
                 model=model, form_factor=form, vram_gb=vram, currency="USD",
                 price=float(price), unit="per_gpu_hour",
+                tenor="on-demand",
+                availability=stock,
+                raw_price_text=f"${float(price):.2f}/hr",
                 notes=f"{label} list; stock={stock}。Secure 不进入官方中位数，以免与 Community 重复且市场层级不同。",
                 include_in_income=1 if include and form != "NVL" else 0,
                 raw_label=f"RunPod {label} {name} {vram}GB ${float(price):.2f}/hr",
-            )), fx))
+            )), fx)))
     return out
 
 
-def _rental_row(fx, source_id, name, url, model, form, vram, price, unit="per_gpu_hour", notes="", include=True, label=None):
-    return attach_fx(assign_model_key(obs(
+def _rental_row(fx, source_id, name, url, model, form, vram, price, unit="per_gpu_hour", notes="", include=True, label=None, **extra):
+    observation_type = extra.pop("observation_type", "rental_list")
+    sold = extra.pop("sold_vs_listed", "rental_list")
+    row = obs(
         source_id=source_id, source_name=name, source_url=url,
-        observation_type="rental_list", sold_vs_listed="rental_list",
+        observation_type=observation_type, sold_vs_listed=sold,
         model=model, form_factor=form, vram_gb=vram, currency="USD",
         price=price, unit=unit, notes=notes,
         include_in_income=1 if include and form != "NVL" else 0,
         raw_label=label or f"{name} {model} {form} {vram}GB ${price}/hr",
-    )), fx)
+        **extra,
+    )
+    return enrich_observation(attach_fx(assign_model_key(row), fx))
 
 
 def parse_lambda(rec, fx):
@@ -950,13 +1797,51 @@ def parse_digitalocean(rec, fx):
         price = money_to_float(m.group(1))
         out.append(_rental_row(fx, "digitalocean", "DigitalOcean GPU droplets", rec["url"],
                               "H100", "SXM", 80, price, notes="按需价目。", include=True,
-                              label=f"DO HGX H100 on-demand ${price}/hr"))
+                              label=f"DO HGX H100 on-demand ${price}/hr",
+                              tenor="on-demand", raw_price_text=f"${price}/GPU/hour",
+                              quantity_config="1 or 8 GPUs per droplet"))
     m = re.search(r"NVIDIA HGX H100 \$([0-9.]+) /GPU/hour 12 Month Reserved", txt)
     if m:
         price = money_to_float(m.group(1))
         out.append(_rental_row(fx, "digitalocean", "DigitalOcean GPU droplets", rec["url"],
                               "H100", "SXM", 80, price, notes="12 个月预留，不进入官方按需中位数。", include=False,
-                              label=f"DO HGX H100 12mo reserved ${price}/hr"))
+                              label=f"DO HGX H100 12mo reserved ${price}/hr",
+                              tenor="reserved", raw_price_text=f"${price}/GPU/hour"))
+    # AMD Instinct published on the same page. Recorded as research observations only.
+    for m in re.finditer(
+        r"AMD Instinct[^\s]*\s+(MI[0-9]{3}X)\s+\$([0-9.]+)\s*/GPU/hour\s+(On-Demand Price|12 Month Reserved Price\*|Current Spot Price\*)",
+        txt,
+    ):
+        model = m.group(1).upper()
+        price = money_to_float(m.group(2))
+        plan = m.group(3)
+        if not price:
+            continue
+        if "Spot" in plan:
+            tenor, tnote, lab = "spot", "DigitalOcean Current Spot Price，可中断。", "spot"
+        elif "Reserved" in plan:
+            tenor, tnote, lab = "reserved", "DigitalOcean 12 个月预留。", "12mo reserved"
+        else:
+            tenor, tnote, lab = "on-demand", "DigitalOcean 按需价目。", "on-demand"
+        # Optional nearby memory, only if present after this match and before the next plan header.
+        vram = AMD_VRAM_HINT.get(model)
+        window = txt[m.end(): m.end() + 280]
+        vm = re.search(r"GPU Memory\s+(\d+)\s*GB", window)
+        if vm:
+            vram = int(vm.group(1))
+        qty = None
+        qm = re.search(r"Choose between (\d+) or (\d+) GPU", window, re.I)
+        if qm:
+            qty = f"{qm.group(1)} or {qm.group(2)} GPUs per droplet"
+        out.append(_rental_row(
+            fx, "digitalocean", "DigitalOcean GPU droplets", rec["url"],
+            model, "OAM", vram, price,
+            notes=tnote + " 【不进入 v0 官方计算】AMD 观察，仅作研究/校准。",
+            include=False,
+            label=f"DO {model} {lab} ${price}/hr",
+            tenor=tenor, vendor="AMD", raw_price_text=f"${price}/GPU/hour",
+            quantity_config=qty,
+        ))
     return out
 
 
@@ -999,7 +1884,102 @@ def parse_crusoe(rec, fx):
                 continue
             out.append(_rental_row(fx, "crusoe", "Crusoe pricing", rec["url"], "H100", "SXM", 80, price,
                                    notes=f"页面并列两个单价（{tag}），期限（按需/预留）未在解析中确认，故不进入官方中位数。",
-                                   include=False, label=f"Crusoe H100 HGX {tag} ${price}/hr (tenor unconfirmed)"))
+                                   include=False, label=f"Crusoe H100 HGX {tag} ${price}/hr (tenor unconfirmed)",
+                                   tenor="unconfirmed"))
+    raw_html = ""
+    try:
+        raw_html = rec["body"].decode("utf-8", "replace")
+    except Exception:
+        raw_html = txt
+    out.extend(_parse_crusoe_amd(raw_html, txt, rec, fx))
+    return out
+
+
+def _parse_crusoe_amd(raw_html: str, txt: str, rec: dict, fx: "FX") -> list:
+    """AMD rows only. Leaves the existing NVIDIA H100 parser untouched."""
+    out = []
+    a = raw_html.find("GPU instances pricing")
+    b = raw_html.find("CPU instances pricing")
+    if a >= 0 and b > a:
+        chunk = raw_html[a:b]
+        names = re.findall(r'<h4 class="pricing-item-heading">([^<]+)</h4>', chunk)
+        vrams = re.findall(r'class="pricing-tag is-dark">([^<]*)</div>', chunk)
+        price_rows = re.split(r'<div role="listitem" class="gpu-row w-dyn-item">', chunk)[1:]
+        def _cell(html_frag: str) -> str:
+            t = re.sub(r"<[^>]+>", " ", html_frag)
+            t = re.sub(r"\s+", " ", htmlmod.unescape(t)).strip()
+            return t
+        cells = [_cell(x) for x in price_rows]
+        n = len(names)
+        if n and len(cells) >= 2 * n and len(vrams) >= n:
+            currents, news = cells[:n], cells[n:2 * n]
+            for i, name in enumerate(names):
+                inst = detect_instinct_model(name)
+                if not inst:
+                    continue
+                vram = None
+                vm = re.search(r"(\d+)", vrams[i] or "")
+                if vm:
+                    vram = int(vm.group(1))
+                cur = currents[i]
+                newp = news[i] if i < len(news) else ""
+                if re.search(r"contact sales", cur, re.I):
+                    out.append(enrich_observation(attach_fx(assign_model_key(obs(
+                        source_id="crusoe", source_name="Crusoe pricing", source_url=rec["url"],
+                        observation_type="rental_list", sold_vs_listed="rental_list",
+                        model=inst, form_factor="OAM", vram_gb=vram, currency="USD",
+                        price=None, unit="per_gpu_hour", tenor="on-demand",
+                        availability="contact_sales", vendor="AMD",
+                        raw_price_text="Contact sales",
+                        notes="GPU instances 表：Current on-demand 为 Contact sales，无公开单价。新价列=" + newp + "。【不进入 v0 官方计算】AMD 观察，仅作研究/校准。",
+                        include_in_income=0,
+                        raw_label=f"Crusoe {inst} on-demand Contact sales (new={newp})",
+                    )), fx)))
+                    continue
+                price = money_to_float(cur.split("/")[0])
+                if not price:
+                    continue
+                out.append(_rental_row(
+                    fx, "crusoe", "Crusoe pricing", rec["url"], inst, "OAM", vram, price,
+                    notes=f"GPU instances 表：Current on-demand。New on-demand starting Dec 1, 2026 = {newp}。期限按需。【不进入 v0 官方计算】AMD 观察，仅作研究/校准。",
+                    include=False,
+                    label=f"Crusoe {inst} on-demand ${price}/hr",
+                    tenor="on-demand", vendor="AMD",
+                    raw_price_text=cur.split()[0] if cur else f"${price}",
+                    availability="listed",
+                ))
+    # Self-Serve Deployments / dedicated model endpoints — not GPU instance rental.
+    ss = raw_html.find("Self-Serve Deployments pricing")
+    se = raw_html.find('id="Self-Serve-Deployments"')
+    if ss >= 0:
+        chunk = raw_html[ss: se if se > ss else ss + 20000]
+        for m in re.finditer(
+            r'<h4 class="pricing-item-heading">(AMD [^<]+)</h4>[\s\S]{0,800}?<p>\$([0-9.]+)</p>\s*<p>/</p>\s*<p>GPU-hr</p>[\s\S]{0,400}?<p>\$([0-9.]+)</p>\s*<p>/</p>\s*<p>GPU-hr</p>',
+            chunk, re.I,
+        ):
+            inst = detect_instinct_model(m.group(1))
+            if not inst:
+                continue
+            cur, newp = money_to_float(m.group(2)), money_to_float(m.group(3))
+            vram = AMD_VRAM_HINT.get(inst)
+            tm = re.search(r'class="pricing-tag is-dark">([^<]*)</div>', m.group(0))
+            if tm and re.search(r"\d+", tm.group(1)):
+                vram = int(re.search(r"\d+", tm.group(1)).group(0))
+            for price, tag, when in (
+                (cur, "current", "Self-Serve Deployments 当前价（专用推理端点，不是 GPU 实例租金）"),
+                (newp, "new-from-2026-12-01", "Self-Serve Deployments 新价 starting Dec 1, 2026（专用推理端点，不是 GPU 实例租金）"),
+            ):
+                if not price:
+                    continue
+                out.append(_rental_row(
+                    fx, "crusoe", "Crusoe pricing", rec["url"], inst, "OAM", vram, price,
+                    notes=when + "。【不进入 v0 官方计算】AMD 观察，仅作研究/校准；不得当作 GPU 实例按需租金进入收益法。",
+                    include=False,
+                    label=f"Crusoe {inst} self-serve endpoint {tag} ${price}/GPU-hr",
+                    tenor="unconfirmed", vendor="AMD",
+                    raw_price_text=f"${price}/GPU-hr",
+                    observation_type="inference_endpoint_list",
+                ))
     return out
 
 
@@ -1260,6 +2240,9 @@ OBS_COLS = [
     "currency", "price", "unit", "usd_price", "usd_per_card", "usd_per_gpu_hour",
     "fx_usd_per_unit", "fx_source", "fx_asof_utc", "observed_at_utc", "asof_date_pt",
     "notes", "include_in_market", "include_in_income", "include_in_cost_new", "model_key", "raw_label",
+    "raw_price_text", "tenor", "region", "quantity_config", "availability",
+    "age_months", "manufacture_date", "first_deploy_date", "age_source", "age_confidence",
+    "vendor", "snapshot_path", "in_official_v0",
 ]
 
 IDX_COLS = [
@@ -1515,11 +2498,13 @@ def run():
                         row["run_id"] = run_id
                         row["snapshot_id"] = snap_id
                         row["snapshot_hash"] = rec.get("sha256")
+                        row["snapshot_path"] = rec.get("path")
                         row["observed_at_utc"] = rec["fetched_at_utc"]
                         row["asof_date_pt"] = asof_date_pt
                         if not row.get("source_id"):
                             row["source_id"] = sid
                         mark_observation_only(row)
+                        enrich_observation(row, snapshot_path=rec.get("path"))
                     rows = drop_competitor_observations(rows, context=f"parse:{sid}")
                     insert_observations(conn, rows)
                     observations.extend(rows)
@@ -1559,6 +2544,8 @@ def run():
     latest, history, dashboard = write_outputs(
         conn, run_id, asof_date_pt, iso(computed_pt), iso(computed), health, observations, index_rows, fx
     )
+    rq = export_raw_quotes(conn, asof_date_pt, run_id)
+    ew = write_event_windows(conn, asof_date_pt)
     conn.close()
 
     log.info("sold_count=%s observations=%s", latest["sold_count_today"], latest["observation_count"])
@@ -1641,6 +2628,23 @@ def recompute_from_run(run_id: str) -> int:
     conn.commit()
     log.info("recompute run_id=%s asof=%s; corrected official flags on %s rows", run_id, asof_date_pt, corrected)
 
+    fx_preview = _fx_from_observations(raw_rows)
+    fx_snap_preview = SNAPSHOT_ROOT / run_id / "fx_usd.bin"
+    if fx_snap_preview.exists():
+        try:
+            fx_preview.load({
+                "ok": True, "body": fx_snap_preview.read_bytes(),
+                "fetched_at_utc": fx_preview.asof_utc or iso(computed),
+            })
+        except Exception:
+            log.exception("could not reload FX snapshot before backfill")
+    bf = backfill_from_snapshots(conn, run_id, fx_preview)
+    log.info("recompute backfill updated=%s inserted=%s", bf.get("updated"), bf.get("inserted"))
+    raw_rows = [dict(r) for r in conn.execute(
+        "SELECT * FROM observations WHERE run_id=? ORDER BY id", (run_id,)
+    ).fetchall()]
+    raw_rows = drop_competitor_observations(raw_rows, context=f"recompute-after-backfill:{run_id}")
+
     health_rows = [dict(r) for r in conn.execute(
         "SELECT source_id, url, ok, http_status, error, observation_count, fetched_at_utc "
         "FROM source_health WHERE run_id=? ORDER BY id", (run_id,)
@@ -1676,6 +2680,8 @@ def recompute_from_run(run_id: str) -> int:
     latest, history, dashboard = write_outputs(
         conn, run_id, asof_date_pt, iso(computed_pt), iso(computed), health, raw_rows, index_rows, fx
     )
+    export_raw_quotes(conn, asof_date_pt, run_id)
+    write_event_windows(conn, asof_date_pt)
     conn.close()
     log.info("sold_count=%s observations=%s official=%s", latest["sold_count_today"],
              latest["observation_count"], latest["official_observation_counts"])
