@@ -24,6 +24,17 @@ ComputeNAV 是一个每日更新的二手数据中心 GPU **指示性可变现�
 
 所有收益法/成本法参数都是 **待校准的占位假设**，详见 [`docs/methodology.md`](docs/methodology.md)。缺失的项在数据中为 `null`，看板显示为 “—”，不会当作 0。
 
+## 样本量规则（n < 3 不公开）
+
+- 任一型号的某个方法（市场/收益/成本）当日样本数 **n < 3** 时，公开数据中该方法的数值为 `null`，并给出 `insufficient_sample.<方法>=true` 和 `n`；看板显示「样本不足 (n=X)」。由该方法直接得出的数值也一并隐藏：收益法 n<3 时隐藏租金中位数，成本法 n<3 时隐藏新卡锚点。
+- **公式不变**：上游 `run_daily.py` 仍按方法论用全部分项计算指示性 NAV 和综合指数。
+- **NAV / 综合的处理**：只有在“和其他已公开数值放在一起也无法反推出任何被隐藏分项”时才公开；否则也为 `null`，并标 `nav_hidden=true` 和原因。`export_public.py` 用精确的线性代数判断（隐藏分项是否能被已公开的 NAV/综合方程唯一解出），先判断各型号 NAV，再判断综合。典型情况：
+  - 某型号只有一个分项被隐藏，其余分项已公开 → NAV 可反推该分项 → 隐藏 NAV；
+  - NAV 只由一个 n<3 的分项构成 → NAV 就等于该分项 → 隐藏；
+  - 综合 = 四个型号 NAV 的平均，若恰有一个型号 NAV 被隐藏 → 综合可反推它 → 隐藏综合。
+  - 两个及以上被隐藏分项共同进入一个 NAV 时，公开的 NAV 只能反推出它们的组合，不能还原任何单个分项，因此照常公开。
+- `history.json` 的每个点同样处理，并保存各方法的 n。`export_public.py` 在写文件前会对 latest 和全部历史点重新检查，发现 n<3 的数值或可反推的 NAV/综合就拒绝发布。
+
 ## 每日更新流程
 
 `.github/workflows/daily.yml`，每天 **12:30 UTC**（= 太平洋时间 04:30 PST / 05:30 PDT）自动运行，也可在 Actions 页面手动触发（workflow_dispatch）：
@@ -60,12 +71,12 @@ python3 -m http.server -d docs 8000   # 打开 http://localhost:8000
 
 本项目由高中生出于学习研究目的制作。所有数据均为指示性估计，可能不完整或有误，不构成正式指数，不构成任何投资、信贷或估值建议，不对准确性作任何保证。
 
-## License
+## 版权（Copyright）
 
-待定（TBD）。在选定许可证之前，默认保留所有权利。
+© 2026 ComputeNAV 项目作者。保留所有权利（All rights reserved）。本仓库不附带任何开源许可证，未授予任何复制、修改或再分发的许可；公开可见不代表获得使用许可。
 
 ---
 
 ### English summary
 
-ComputeNAV is a high-school student research project that publishes a daily **indicative** NAV (USD per card) for used H100 SXM, H100 PCIe, A100 80GB and A100 40GB GPUs, equal-weighting market (dealer listings), income (placeholder DCF of public rental rates) and cost (new-card anchor × placeholder remaining-value factor) approaches. A GitHub Actions workflow runs daily at 12:30 UTC (04:30 PST / 05:30 PDT), publishes only aggregated JSON to `docs/data/`, and deploys the static dashboard to GitHub Pages. Raw observations, snapshots and the database are never committed or published. Vast.ai, eBay, Clustermelt and Mulligan are excluded from the official calculation (methodology §10); CI does not fetch Vast.ai or eBay. **Indicative data only. Not investment advice.** License: TBD.
+ComputeNAV is a high-school student research project that publishes a daily **indicative** NAV (USD per card) for used H100 SXM, H100 PCIe, A100 80GB and A100 40GB GPUs, equal-weighting market (dealer listings), income (placeholder DCF of public rental rates) and cost (new-card anchor × placeholder remaining-value factor) approaches. A GitHub Actions workflow runs daily at 12:30 UTC (04:30 PST / 05:30 PDT), publishes only aggregated JSON to `docs/data/`, and deploys the static dashboard to GitHub Pages. Raw observations, snapshots and the database are never committed or published. Vast.ai, eBay, Clustermelt and Mulligan are excluded from the official calculation (methodology §10); CI does not fetch Vast.ai or eBay. Method values with n < 3 (and any NAV/composite that would reveal them) are not published. **Indicative data only. Not investment advice.** © 2026 ComputeNAV authors. All rights reserved; no licence is granted.

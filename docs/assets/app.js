@@ -64,20 +64,29 @@
 
   function renderMetrics(L) {
     var c = L.composite || {};
-    var html = "<div class='metric primary'><div class='v'>" + usd(c.nav_indicative_usd) + "</div><div class='l'>" + esc(c.label || "综合") +
-      "</div><div class='d'>四只子指数等权平均（" + int(c.n_models) + " 个型号有值），装机量权数待校准<br><span class='en'>" + esc(c.label_en || "") + "</span></div></div>";
+    var cHidden = !!c.nav_hidden;
+    var html = "<div class='metric primary" + (cHidden ? " warn" : "") + "'><div class='v'>" + (cHidden ? "已隐藏 <small>hidden</small>" : usd(c.nav_indicative_usd)) +
+      "</div><div class='l'>" + esc(c.label || "综合") +
+      "</div><div class='d'>" + (cHidden && c.nav_hidden_reason ? esc(c.nav_hidden_reason.zh) + "<br><span class='en'>" + esc(c.nav_hidden_reason.en) + "</span><br>" : "") +
+      "四只子指数等权平均（" + int(c.n_models) + " 个型号有值），装机量权数待校准<br><span class='en'>" + esc(c.label_en || "") + "</span></div></div>";
     MODEL_KEYS.forEach(function (k) {
       var m = (L.models || {})[k];
       if (!m) { html += "<div class='metric warn'><div class='v'>" + DASH + "</div><div class='l'>" + k + "</div><div class='d'>当日无数据 / no data</div></div>"; return; }
-      var legs = m.legs_used;
-      var partial = !isNum(legs) || legs < 3;
-      var legNames = [];
-      if (isNum(m.market_usd)) legNames.push("市场 market");
-      if (isNum(m.income_usd)) legNames.push("收益 income");
-      if (isNum(m.cost_usd)) legNames.push("成本 cost");
-      var detail = partial ? ("仅 " + (legNames.join(" + ") || DASH) + "，不可直接横向比较 · only " + int(legs) + " of 3 methods")
+      var ins = m.insufficient_sample || {};
+      var legNames = [], small = [];
+      [["market", "市场 market"], ["income", "收益 income"], ["cost", "成本 cost"]].forEach(function (lg) {
+        var n = m[lg[0] + "_n"];
+        if (isNum(n) && n > 0) legNames.push(lg[1]);
+        if (ins[lg[0]]) small.push(lg[1] + " n=" + n);
+      });
+      var partial = legNames.length < 3;
+      var detail = partial ? ("仅 " + (legNames.join(" + ") || DASH) + "，不可直接横向比较 · only " + legNames.length + " of 3 methods")
                            : "市场/收益/成本三法等权 · 3 methods equal-weight";
-      html += "<div class='metric" + (partial ? " warn" : "") + "'><div class='v'>" + usd(m.nav_indicative_usd) + "</div><div class='l'>" +
+      if (small.length) detail += "<br>样本不足未公开 / not published (n&lt;3): " + esc(small.join(", "));
+      var hidden = !!m.nav_hidden;
+      var val = hidden ? "已隐藏 <small>hidden</small>" : usd(m.nav_indicative_usd);
+      if (hidden && m.nav_hidden_reason) detail = esc(m.nav_hidden_reason.zh) + "<br><span class='en'>" + esc(m.nav_hidden_reason.en) + "</span><br>" + detail;
+      html += "<div class='metric" + (partial || hidden ? " warn" : "") + "'><div class='v'>" + val + "</div><div class='l'>" +
         esc(m.label) + "</div><div class='d'>" + detail + "</div></div>";
     });
     $("metrics").innerHTML = html;
@@ -101,14 +110,24 @@
     var num = [false, true, true, true, true, true, true, true, true, true, false];
     var rows = MODEL_KEYS.map(function (k) {
       var m = (L.models || {})[k] || {};
-      return [esc(m.label || k), usd(m.nav_indicative_usd), usd(m.market_usd), int(m.market_n), usd(m.income_usd),
-        isNum(m.rental_median_usd_per_hour) ? usd(m.rental_median_usd_per_hour, 4) : DASH, int(m.income_n),
-        usd(m.cost_usd), usd(m.new_card_usd), int(m.cost_n), esc(qualityText(m.quality_flag))];
+      var ins = m.insufficient_sample || {};
+      function small(leg) { return "<span class='skip'>样本不足 (n=" + int(m[leg + "_n"]) + ")</span>"; }
+      function leg(name, v, d) { return ins[name] ? small(name) : usd(v, d); }
+      return [esc(m.label || k), m.nav_hidden ? "<span class='skip'>已隐藏 hidden</span>" : usd(m.nav_indicative_usd),
+        leg("market", m.market_usd), int(m.market_n), leg("income", m.income_usd),
+        leg("income", m.rental_median_usd_per_hour, 4), int(m.income_n),
+        leg("cost", m.cost_usd), leg("cost", m.new_card_usd), int(m.cost_n), esc(qualityText(m.quality_flag))];
     });
     $("breakdown").innerHTML = "<thead><tr>" + head.map(function (h, i) { return "<th" + (num[i] ? " class='num'" : "") + ">" + h + "</th>"; }).join("") +
       "</tr></thead><tbody>" + rows.map(function (r) {
         return "<tr>" + r.map(function (c, i) { return "<td" + (num[i] ? " class='num'" : "") + ">" + c + "</td>"; }).join("") + "</tr>";
       }).join("") + "</tbody>";
+  }
+
+  function renderSmallSampleNote(L) {
+    var r = L.small_sample_rule;
+    if (!r) return;
+    $("small-sample").innerHTML = "样本量规则 / small-sample rule (n&lt;" + int(r.min_n) + "): " + esc(r.zh) + " <span class='en'>" + esc(r.en) + "</span>";
   }
 
   function renderChart(H) {
@@ -158,7 +177,7 @@
       var last = null;
       for (var i = s.values.length - 1; i >= 0; i--) if (isNum(s.values[i])) { last = s.values[i]; break; }
       return "<span style='--c:" + (COLORS[s.key] || "#888") + "'>" + esc(s.label) + "（最新 " + usd(last) + "）</span>";
-    }).join("") + "<span class='note' style='--c:transparent'>" + dates.length + " 个交易日 / days · 缺值不插补 / gaps not interpolated</span>";
+    }).join("") + "<span class='note' style='--c:transparent'>" + dates.length + " 个交易日 / days · 缺值或已隐藏的点不插补 / missing or hidden points are not interpolated</span>";
   }
 
   function renderAssumptions(L) {
@@ -200,7 +219,7 @@
 
   Promise.all([getJSON("data/latest.json"), getJSON("data/history.json")]).then(function (r) {
     var L = r[0], H = r[1];
-    renderProps(L); renderMetrics(L); renderBreakdown(L); renderChart(H);
+    renderProps(L); renderMetrics(L); renderBreakdown(L); renderSmallSampleNote(L); renderChart(H);
     renderAssumptions(L); renderHealth(L); renderLicensing(L);
     document.body.setAttribute("data-rendered", "1");
   }).catch(function (e) {
