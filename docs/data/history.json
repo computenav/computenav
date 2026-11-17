@@ -3,11 +3,10 @@
   "series": {
     "H100_SXM": {
       "label": "H100 SXM",
-      "label_en": "H100 SXM",
       "points": [
         {
           "asof_date_pt": "2026-11-16",
-          "computed_at_pt": "2026-11-17T02:48:57.423727-08:00",
+          "computed_at_pt": "2026-11-17T03:03:02.432090-08:00",
           "nav_indicative_usd": 20216.27,
           "market_usd": null,
           "income_usd": 41123.05,
@@ -26,11 +25,10 @@
     },
     "H100_PCIe": {
       "label": "H100 PCIe",
-      "label_en": "H100 PCIe",
       "points": [
         {
           "asof_date_pt": "2026-11-16",
-          "computed_at_pt": "2026-11-17T02:48:57.423727-08:00",
+          "computed_at_pt": "2026-11-17T03:03:02.432090-08:00",
           "nav_indicative_usd": 17037.79,
           "market_usd": null,
           "income_usd": 26032.52,
@@ -49,11 +47,10 @@
     },
     "A100_80GB": {
       "label": "A100 80GB",
-      "label_en": "A100 80GB",
       "points": [
         {
           "asof_date_pt": "2026-11-16",
-          "computed_at_pt": "2026-11-17T02:48:57.423727-08:00",
+          "computed_at_pt": "2026-11-17T03:03:02.432090-08:00",
           "nav_indicative_usd": null,
           "market_usd": 7474.71,
           "income_usd": 14578.21,
@@ -72,11 +69,10 @@
     },
     "A100_40GB": {
       "label": "A100 40GB",
-      "label_en": "A100 40GB",
       "points": [
         {
           "asof_date_pt": "2026-11-16",
-          "computed_at_pt": "2026-11-17T02:48:57.423727-08:00",
+          "computed_at_pt": "2026-11-17T03:03:02.432090-08:00",
           "nav_indicative_usd": 20721.89,
           "market_usd": null,
           "income_usd": 20721.89,
@@ -94,12 +90,11 @@
       ]
     },
     "COMPOSITE": {
-      "label": "综合（等权，待校准）",
-      "label_en": "Composite (equal-weight, to be calibrated)",
+      "label": "Composite (equal-weight, to be calibrated)",
       "points": [
         {
           "asof_date_pt": "2026-11-16",
-          "computed_at_pt": "2026-11-17T02:48:57.423727-08:00",
+          "computed_at_pt": "2026-11-17T03:03:02.432090-08:00",
           "nav_indicative_usd": null,
           "nav_hidden": true
         }
@@ -109,5 +104,5 @@
   "dates": [
     "2026-11-16"
   ],
-  "generated_at_pt": "2026-11-17T02:48:57.423727-08:00"
+  "generated_at_pt": "2026-11-17T03:03:02.432090-08:00"
 }

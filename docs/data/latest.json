@@ -1,13 +1,10 @@
 {
   "schema_version": 2,
   "asof_date_pt": "2026-11-16",
-  "computed_at_pt": "2026-11-17T02:48:57.423727-08:00",
-  "computed_at_utc": "2026-11-17T10:48:57.423727+00:00",
+  "computed_at_pt": "2026-11-17T03:03:02.432090-08:00",
+  "computed_at_utc": "2026-11-17T11:03:02.432090+00:00",
   "run_id": "20261116T212104_PT",
-  "disclaimer": {
-    "zh": "高中生研究项目。指示性数据，尚无成交样本；收益法与成本法参数均为待校准占位假设，不构成正式指数，不构成投资建议。",
-    "en": "High-school student research project. Indicative data only, no sold transactions yet; income/cost parameters are placeholders to be calibrated. Not an official index. Not investment advice."
-  },
+  "disclaimer": "High-school student research project. Indicative data only, no sold transactions yet; income/cost parameters are placeholders to be calibrated. Not an official index. Not investment advice.",
   "sold_count_today": 0,
   "observation_count": 79,
   "official_observation_counts": {
@@ -23,46 +20,42 @@
   },
   "assumptions": {
     "status": "to-be-calibrated",
-    "disclaimer_zh": "以下参数均为占位假设，未经指数委员会校准，不构成正式方法论参数。",
+    "disclaimer": "All parameters below are placeholder assumptions. They have not been calibrated by an index committee and are not official methodology parameters.",
     "income": {
       "remaining_life_years": 4,
-      "remaining_life_note": "占位：剩余经济寿命 4 年。CoreWeave 会计寿命为 6 年、IREN 质押 GPU 为 5 年，均只作参照，不等于本参数。",
+      "remaining_life_note": "Placeholder: remaining economic life of 4 years. CoreWeave's 6-year accounting life and IREN's 5-year life for pledged GPUs are reference points only and are not this parameter.",
       "utilization": 0.5,
-      "utilization_note": "占位：利用率 50%，不得理解为已校准的市场利用率。",
+      "utilization_note": "Placeholder: 50% utilization. Must not be read as a calibrated market utilization.",
       "opex_ratio": 0.25,
-      "opex_note": "占位：运营成本（电费、机架、运维）按毛租金收入的 25% 扣除，未经电价或机柜成本实证。",
+      "opex_note": "Placeholder: operating costs (power, rack space, operations) are deducted at 25% of gross rental revenue; not based on empirical power or colocation costs.",
       "discount_rate_annual": 0.1,
-      "discount_note": "占位：年折现率 10%。",
+      "discount_note": "Placeholder: 10% annual discount rate.",
       "terminal_value": 0.0,
-      "terminal_note": "占位：期末残值为 0，寿命期末不再另计 TV。",
+      "terminal_note": "Placeholder: terminal value of 0; no additional terminal value at the end of the life.",
       "hours_per_year": 8760,
-      "rental_rate_rule": "取当日纳入收益法的按需/价目租金（USD/GPU-hour）的中位数；预留、现货、期限不明确的观察以及形态无法归属的观察不进入中位数。"
+      "rental_rate_rule": "Median of the day's on-demand / list rents (USD per GPU-hour) admitted to the income approach. Reserved, spot and unclear-term observations, and observations whose form factor cannot be assigned, are excluded from the median."
     },
     "cost": {
       "book_life_years_anchor": 5,
-      "book_life_note": "占位：直线折旧年限取 IREN 质押 GPU 会计寿命 5 年作情景锚点（CoreWeave 计算设备为 6 年）。官方寿命待校准。",
+      "book_life_note": "Placeholder: the straight-line life uses IREN's 5-year accounting life for pledged GPUs as a scenario anchor (CoreWeave uses 6 years for compute equipment). The official life is to be calibrated.",
       "unknown_age_remaining_fraction": 0.5,
-      "age_note": "占位：二手观察普遍缺失机龄，成本法按「5 年直线、未知机龄取中点」使用 50% 剩余价值系数。不是已校准的残值曲线。",
-      "new_price_source": "优先使用 Genius HPC 同页 New From（欧元未税经销商起价），不是 NVIDIA MSRP，也不是美国渠道价。"
+      "age_note": "Placeholder: used observations generally lack age, so the cost approach uses a 50% remaining-value factor (\"5-year straight line, midpoint for unknown age\"). Not a calibrated residual curve.",
+      "new_price_source": "Genius HPC \"New From\" prices on the same page (EUR ex-VAT dealer starting prices) are preferred. These are not NVIDIA MSRP and not US channel prices."
     },
     "market": {
       "sold_weight": "n/a (sold=0)",
-      "listing_rule": "仅使用可解析的经销商挂牌（Genius HPC 在售、Creative Compute 询价）。AnchorGPU（未开放下单）、第三方汇总（Clustermelt/Mulligan）、不可售整机、以及未扣除主机部件的整机简单除法，不进入官方市场法中位数。",
+      "listing_rule": "Only parseable dealer listings are used (Genius HPC in stock, Creative Compute on enquiry). AnchorGPU (ordering not open), third-party compilations (Clustermelt/Mulligan), unavailable systems, and systems simply divided by card count without deducting host components do not enter the official market-approach median.",
       "aggregator": "unweighted median (weights to-be-calibrated)"
     },
     "composite": {
-      "rule": "四只子指数的等权平均（装机量权数待校准）。子指数指示性 NAV 为当日可得的市场法/收益法/成本法的等权平均（三法权重待校准）。"
+      "rule": "Equal-weight average of the four sub-indices (installed-base weights to be calibrated). Each sub-index's indicative NAV is the equal-weight average of the market/income/cost values available that day (method weights to be calibrated)."
     }
   },
   "composite": {
-    "label": "综合（等权，待校准）",
-    "label_en": "Composite (equal-weight, to be calibrated)",
+    "label": "Composite (equal-weight, to be calibrated)",
     "nav_indicative_usd": null,
     "nav_hidden": true,
-    "nav_hidden_reason": {
-      "zh": "已隐藏：综合为四个型号 NAV 的等权平均，公开它可反推出被隐藏的型号 NAV，进而反推出样本不足（n<3）的分项。",
-      "en": "Hidden: the composite is the equal-weight mean of model NAVs; publishing it would reveal a hidden model NAV and thus a leg with n<3."
-    },
+    "nav_hidden_reason": "Hidden: the composite is the equal-weight mean of the model NAVs; publishing it would reveal a hidden model NAV and therefore a method value with n<3.",
     "n_models": 4,
     "quality_flag": "equal_weight_of_four_models;installed_base_weights=to-be-calibrated;sold_n=0"
   },
@@ -70,7 +63,6 @@
     "H100_SXM": {
       "model_key": "H100_SXM",
       "label": "H100 SXM",
-      "label_en": "H100 SXM",
       "nav_indicative_usd": 20216.27,
       "market_usd": null,
       "income_usd": 41123.05,
@@ -93,7 +85,6 @@
     "H100_PCIe": {
       "model_key": "H100_PCIe",
       "label": "H100 PCIe",
-      "label_en": "H100 PCIe",
       "nav_indicative_usd": 17037.79,
       "market_usd": null,
       "income_usd": 26032.52,
@@ -116,7 +107,6 @@
     "A100_80GB": {
       "model_key": "A100_80GB",
       "label": "A100 80GB",
-      "label_en": "A100 80GB",
       "nav_indicative_usd": null,
       "market_usd": 7474.71,
       "income_usd": 14578.21,
@@ -134,15 +124,11 @@
         "cost": true
       },
       "nav_hidden": true,
-      "nav_hidden_reason": {
-        "zh": "已隐藏：结合已公开的其他数值，可反推出某个样本不足（n<3）的分项。公式未改，上游仍按全部分项计算。",
-        "en": "Hidden: together with other published values it would reveal a method leg with n<3. Formula unchanged; computed upstream from all legs."
-      }
+      "nav_hidden_reason": "Hidden: together with other published values it would reveal a method value with n<3. The formula is unchanged; the NAV is still computed upstream from all methods."
     },
     "A100_40GB": {
       "model_key": "A100_40GB",
       "label": "A100 40GB",
-      "label_en": "A100 40GB",
       "nav_indicative_usd": 20721.89,
       "market_usd": null,
       "income_usd": 20721.89,
@@ -165,8 +151,7 @@
   },
   "small_sample_rule": {
     "min_n": 3,
-    "zh": "任一方法（市场/收益/成本）样本数 n<3 时，不公开该方法数值及由其直接得出的数值（租金中位数、新卡锚点），只公开 n 并标记 insufficient_sample。指示性 NAV 与综合指数仍按上游方法论用全部分项计算（公式不变）；若公开后可反推出被隐藏的分项，则该 NAV/综合也隐藏（nav_hidden=true）。",
-    "en": "Any method leg with n<3 is published as null with its n and insufficient_sample=true; derived values (rent median, new-card anchor) are hidden too. NAV and composite are computed upstream from all legs (formula unchanged) but are hidden (nav_hidden=true) if publishing them would let a hidden leg be backed out."
+    "text": "Any method leg with n<3 is published as null with its n and insufficient_sample=true; derived values (rent median, new-card anchor) are hidden too. NAV and composite are computed upstream from all legs (formula unchanged) but are hidden (nav_hidden=true) if publishing them would let a hidden leg be backed out."
   },
   "source_health": [
     {
@@ -447,7 +432,6 @@
         "reason": "unavailable 8-GPU server listing; weight 0"
       }
     ],
-    "note_zh": "公开数据仅含按型号汇总的指示性 NAV、三法结果、样本数与中位数；不含任何单条挂牌/租金观测或分来源原始价格。按方法论第 10 节，Vast.ai、eBay、Clustermelt、Mulligan 不进入官方计算；每日 CI 不抓取 Vast.ai 与 eBay。",
-    "note_en": "Public data contains only per-model aggregates (indicative NAV, method legs, counts, medians). No listing-level observations or per-source raw prices. Per methodology section 10, Vast.ai, eBay, Clustermelt and Mulligan are excluded from the official calculation; the daily CI does not fetch Vast.ai or eBay."
+    "note": "Public data contains only per-model aggregates (indicative NAV, method legs, counts, medians). No listing-level observations or per-source raw prices. Per methodology section 10, Vast.ai, eBay, Clustermelt and Mulligan are excluded from the official calculation; the daily CI does not fetch Vast.ai or eBay."
   }
 }

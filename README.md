@@ -1,53 +1,53 @@
-# ComputeNAV · GPU NAV 指数（研究项目）
+# ComputeNAV · GPU NAV Index (research project)
 
-> **高中生研究项目 · High-school student research project**
-> **指示性数据，尚无成交样本 · Indicative data only, no sold transactions yet**
-> **不构成投资建议 · Not investment advice**
+> **High-school student research project**
+> **Indicative data only — no sold transactions yet**
+> **Not investment advice**
 
-ComputeNAV 是一个每日更新的二手数据中心 GPU **指示性可变现净值（NAV，美元/卡）** 研究指数，配一个静态网页看板（GitHub Pages）。
+ComputeNAV is a daily research index of the **indicative realizable net asset value (NAV, USD per card)** of used data-center GPUs, with a static dashboard published on GitHub Pages.
 
-## 覆盖范围
+## Coverage
 
-| 子指数 | 说明 |
+| Sub-index | Notes |
 |---|---|
-| H100 SXM | 80GB SXM 模块 |
-| H100 PCIe | 80GB PCIe 卡 |
+| H100 SXM | 80GB SXM module |
+| H100 PCIe | 80GB PCIe card |
 | A100 80GB | SXM / PCIe 80GB |
 | A100 40GB | 40GB |
-| 综合 | 四只子指数等权平均（装机量权数待校准） |
+| Composite | Equal-weight mean of the four sub-indices (installed-base weights to be calibrated) |
 
-每个型号的指示性 NAV = 当日可得的三种方法的等权平均：
+Each model's indicative NAV is the equal-weight mean of the three approaches available that day:
 
-- **市场法（market）**：经销商在售挂牌的不加权中位数（尚无成交样本，sold = 0）。
-- **收益法（income）**：公开按需/价目租金（USD/GPU-小时）中位数的占位 DCF。
-- **成本法（cost）**：新卡锚点 × 剩余价值系数（未知机龄取中点）。
+- **Market approach:** unweighted median of dealer listings (there are no sold transactions yet; sold = 0).
+- **Income approach:** placeholder DCF of the median public on-demand / list rent (USD per GPU-hour).
+- **Cost approach:** new-card anchor × remaining-value factor (midpoint for unknown age).
 
-所有收益法/成本法参数都是 **待校准的占位假设**，详见 [`docs/methodology.md`](docs/methodology.md)。缺失的项在数据中为 `null`，看板显示为 “—”，不会当作 0。
+All income- and cost-approach parameters are **placeholders to be calibrated**; see [`docs/methodology.md`](docs/methodology.md). Missing values are `null` in the data and shown as “—” on the dashboard, never as 0.
 
-## 样本量规则（n < 3 不公开）
+## Small-sample rule (n < 3 is not published)
 
-- 任一型号的某个方法（市场/收益/成本）当日样本数 **n < 3** 时，公开数据中该方法的数值为 `null`，并给出 `insufficient_sample.<方法>=true` 和 `n`；看板显示「样本不足 (n=X)」。由该方法直接得出的数值也一并隐藏：收益法 n<3 时隐藏租金中位数，成本法 n<3 时隐藏新卡锚点。
-- **公式不变**：上游 `run_daily.py` 仍按方法论用全部分项计算指示性 NAV 和综合指数。
-- **NAV / 综合的处理**：只有在“和其他已公开数值放在一起也无法反推出任何被隐藏分项”时才公开；否则也为 `null`，并标 `nav_hidden=true` 和原因。`export_public.py` 用精确的线性代数判断（隐藏分项是否能被已公开的 NAV/综合方程唯一解出），先判断各型号 NAV，再判断综合。典型情况：
-  - 某型号只有一个分项被隐藏，其余分项已公开 → NAV 可反推该分项 → 隐藏 NAV；
-  - NAV 只由一个 n<3 的分项构成 → NAV 就等于该分项 → 隐藏；
-  - 综合 = 四个型号 NAV 的平均，若恰有一个型号 NAV 被隐藏 → 综合可反推它 → 隐藏综合。
-  - 两个及以上被隐藏分项共同进入一个 NAV 时，公开的 NAV 只能反推出它们的组合，不能还原任何单个分项，因此照常公开。
-- `history.json` 的每个点同样处理，并保存各方法的 n。`export_public.py` 在写文件前会对 latest 和全部历史点重新检查，发现 n<3 的数值或可反推的 NAV/综合就拒绝发布。
+- When a method (market / income / cost) has **fewer than 3 observations** for a model on a given day, that method's value is published as `null` together with `insufficient_sample.<method> = true` and its `n`; the dashboard shows “Insufficient sample (n=X)”. Values derived directly from that method are hidden too: the rent median when income n < 3, and the new-card anchor when cost n < 3.
+- **The formulas are unchanged:** the upstream pipeline still computes the indicative NAV and the composite from all methods, as the methodology specifies.
+- **NAV and composite:** they are published only if, together with all other published values, they cannot be used to back out any hidden method value. Otherwise they are also `null`, with `nav_hidden = true` and a reason. `export_public.py` checks this exactly with linear algebra (can a hidden value be uniquely solved from the published NAV / composite equations?), first for each model NAV, then for the composite. Typical cases:
+  - only one method of a model is hidden and the others are published → the NAV would reveal it → the NAV is hidden;
+  - the NAV consists of a single method with n < 3 → the NAV equals that value → hidden;
+  - the composite is the mean of the four model NAVs; if exactly one model NAV is hidden, the composite would reveal it → the composite is hidden;
+  - when two or more hidden methods enter the same NAV, the NAV only reveals their combination, not any single value, so it is published.
+- Every point in `history.json` is treated the same way and stores the `n` of each method. Before writing any file, `export_public.py` re-checks the latest data and every history point, and refuses to publish if it finds a value with n < 3 or a NAV / composite that would reveal one.
 
-## 每日更新流程
+## Daily update
 
-`.github/workflows/daily.yml`，每天 **12:30 UTC**（= 太平洋时间 04:30 PST / 05:30 PDT）自动运行，也可在 Actions 页面手动触发（workflow_dispatch）：
+`.github/workflows/daily.yml` runs every day at **12:30 UTC** (04:30 PST / 05:30 PDT) and can also be started manually from the Actions tab (workflow_dispatch):
 
-1. `pipeline/run_daily.py` 抓取公开来源，单源失败只记日志不中断；原始快照、SQLite 库与观测明细全部写在 runner 的临时目录，**任务结束即丢弃**，不提交、不上传 artifact、不放 cache。
-2. `pipeline/export_public.py` 把当天结果转成 **只含汇总值** 的 `docs/data/latest.json`，并把当天的点 upsert 进 `docs/data/history.json`（同一 PT 日期重复运行以最后一次为准）。
-3. 工作流把这两个 JSON 提交回 `main`，然后把 `docs/` 部署到 GitHub Pages。
+1. `pipeline/run_daily.py` fetches public sources; a failing source is logged and does not stop the run. Raw snapshots, the SQLite database and listing-level observations are written to the runner's temporary directory and **discarded when the job ends** — they are never committed, uploaded as artifacts, or cached.
+2. `pipeline/export_public.py` turns the day's result into `docs/data/latest.json`, which contains **aggregates only**, and upserts the day's point into `docs/data/history.json` (repeated runs on the same PT date keep the last one).
+3. The workflow commits these two JSON files back to `main` and deploys `docs/` to GitHub Pages.
 
-**历史连续性**：`docs/data/history.json` 本身就是长期公开记录，保存在仓库里，每次运行只追加/更新当天的点，因此不需要保留 `nav.db`。2026-11-16 的首个点由 `pipeline/seed_from_db.py` 用上游的 `run_daily.py --recompute-from-run` 在内部数据库副本上重算得到（仅观察源不进入官方计算）。
+**History continuity:** `docs/data/history.json` is itself the long-term public record. It lives in the repository and each run only adds or updates the current day, so `nav.db` does not need to be kept. The first point (2026-11-16) was produced by `pipeline/seed_from_db.py`, which reruns the upstream `run_daily.py --recompute-from-run` on a copy of the project's internal database (observation-only sources do not enter the official calculation).
 
-**管道脚本与上游一致**：`pipeline/run_daily.py` 是内部上游脚本的逐字副本，只加了两个默认无效（no-op）的环境变量钩子：`COMPUTENAV_DATA_DIR`（私有输出目录，默认与上游相同）和 `COMPUTENAV_SKIP_SOURCES`（跳过指定源的抓取，默认不跳过）。差异见 `pipeline/upstream-hooks.patch`，可直接并回上游，此后两边可以完全相同。
+**Pipeline identical to upstream:** `pipeline/run_daily.py` is a verbatim copy of the project's upstream script plus two environment-variable hooks that are no-ops by default: `COMPUTENAV_DATA_DIR` (private output directory; defaults to the upstream location) and `COMPUTENAV_SKIP_SOURCES` (skip fetching the listed sources; nothing is skipped by default). The diff is in `pipeline/upstream-hooks.patch`. Note: the upstream script contains Chinese comments and internal note strings; these never appear in the published JSON or on the site (`export_public.py` translates or drops them and refuses to publish non-English text).
 
-本地运行：
+Running locally:
 
 ```bash
 COMPUTENAV_DATA_DIR=/tmp/computenav-private \
@@ -55,28 +55,22 @@ COMPUTENAV_SKIP_SOURCES=vast_public_feed,vast_bundles,ebay_sold,ebay_active \
 python3 pipeline/run_daily.py
 python3 pipeline/export_public.py --private-latest /tmp/computenav-private/output/latest.json
 pip install -r requirements.txt && python3 pipeline/render_methodology.py
-python3 -m http.server -d docs 8000   # 打开 http://localhost:8000
-# 注意：不设 COMPUTENAV_DATA_DIR 时脚本与上游一样写入 /workspace/computenav
+python3 -m http.server -d docs 8000   # open http://localhost:8000
+# Without COMPUTENAV_DATA_DIR the script writes to the upstream default location.
 ```
 
-## 数据许可（Data licensing）
+## Data licensing
 
-- **Vast.ai**：其公共定价数据条款写明“用于任何指数、基准或衍生产品须取得数据许可（data@vast.ai）”。按方法论第 10 节，取得许可前 Vast.ai 只作观察、**不进入官方计算**；每日 CI 中干脆不抓取（`COMPUTENAV_SKIP_SOURCES`）。
-- **eBay**：没有经授权的 API 访问，网页抓取会被拦截（403），本项目不绕过任何访问限制，CI 中不请求 eBay。
-- **Clustermelt、Mulligan（转述 eBay 挂牌）**：上游列为仅观察源，不进入官方计算；**AnchorGPU、ServerPartsDeals** 的相关挂牌也不进入官方中位数。以上原始数值均不公开。
-- 公开仓库与网页 **只包含按型号汇总** 的 NAV、三法结果、样本数和中位数；**不包含** 任何单条挂牌/租金观测、分来源原始价格、原始快照或数据库（见 `.gitignore`）。
-- 其他公开价目页来源（RunPod、Lambda、CoreWeave 等）在系统化采集前仍需逐家确认条款。
+- **Vast.ai:** its public pricing data terms state that "use in any index, benchmark, or derivative product requires a data license (data@vast.ai)". Per Section 10 of the methodology, Vast.ai is observation-only and **does not enter the official calculation** until licensed; the daily CI does not fetch it at all (`COMPUTENAV_SKIP_SOURCES`).
+- **eBay:** there is no licensed API access, and web requests are blocked (403). This project does not bypass any access restriction, and the CI does not request eBay.
+- **Clustermelt, Mulligan (relays eBay listings):** observation-only upstream; they do not enter the official calculation. Listings from **AnchorGPU and ServerPartsDeals** do not enter the official median either. None of their raw values are published.
+- The public repository and site contain **only per-model aggregates** (NAV, method values, sample counts and medians, subject to the small-sample rule). They do **not** contain any listing-level or rental observation, per-source raw prices, raw snapshots or the database (see `.gitignore`).
+- Other public price-list sources (RunPod, Lambda, CoreWeave, etc.) still need their terms confirmed one by one before systematic collection.
 
-## 免责声明
+## Disclaimer
 
-本项目由高中生出于学习研究目的制作。所有数据均为指示性估计，可能不完整或有误，不构成正式指数，不构成任何投资、信贷或估值建议，不对准确性作任何保证。
+This project was created by a high-school student for learning and research purposes. All data are indicative estimates and may be incomplete or wrong. This is not an official index and does not constitute investment, credit or valuation advice. No warranty of accuracy is given.
 
-## 版权（Copyright）
+## Copyright
 
-© 2026 ComputeNAV 项目作者。保留所有权利（All rights reserved）。本仓库不附带任何开源许可证，未授予任何复制、修改或再分发的许可；公开可见不代表获得使用许可。
-
----
-
-### English summary
-
-ComputeNAV is a high-school student research project that publishes a daily **indicative** NAV (USD per card) for used H100 SXM, H100 PCIe, A100 80GB and A100 40GB GPUs, equal-weighting market (dealer listings), income (placeholder DCF of public rental rates) and cost (new-card anchor × placeholder remaining-value factor) approaches. A GitHub Actions workflow runs daily at 12:30 UTC (04:30 PST / 05:30 PDT), publishes only aggregated JSON to `docs/data/`, and deploys the static dashboard to GitHub Pages. Raw observations, snapshots and the database are never committed or published. Vast.ai, eBay, Clustermelt and Mulligan are excluded from the official calculation (methodology §10); CI does not fetch Vast.ai or eBay. Method values with n < 3 (and any NAV/composite that would reveal them) are not published. **Indicative data only. Not investment advice.** © 2026 ComputeNAV authors. All rights reserved; no licence is granted.
+© 2026 ComputeNAV project authors. All rights reserved. No licence is granted: this repository has no open-source licence, and no permission is given to copy, modify or redistribute its contents. Being publicly visible does not grant any right of use.

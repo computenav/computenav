@@ -1,112 +1,112 @@
 <!doctype html>
-<html lang="zh-Hans"><head><meta charset="utf-8">
+<html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>ComputeNAV 方法论 v0 · Methodology</title>
+<title>ComputeNAV Methodology v0</title>
 <link rel="stylesheet" href="assets/style.css">
 <style>main{max-width:960px} main table{display:block;overflow-x:auto;background:#fff;border:1px solid var(--line)} blockquote{background:var(--warnbg);border-left:4px solid #f0b54a;margin:12px 0;padding:8px 14px}</style>
 </head><body>
 <header class="banner" role="note"><div class="banner-row">
-<span class="pill">高中生研究项目 · High-school student research project</span>
-<span class="pill">指示性数据 · Indicative data only</span>
-<span class="pill">不构成投资建议 · Not investment advice</span></div></header>
-<main><p><a href="index.html">← 返回看板 / Back to dashboard</a></p>
-<h1 id="computenav-ai-nav-index-methodologyv0">ComputeNAV / AI NAV Index 方法论（Methodology）v0</h1>
+<span class="pill">High-school student research project</span>
+<span class="pill">Indicative data only</span>
+<span class="pill">Not investment advice</span></div></header>
+<main><p><a href="index.html">← Back to dashboard</a></p>
+<h1 id="computenav-ai-nav-index-methodology-v0">ComputeNAV / AI NAV Index Methodology v0</h1>
 <blockquote>
-<p><strong>公开版说明（Public copy note）：</strong> 本文件复制自 methodology_v0.md（2026-11-16 PT）。为遵守数据许可，公开版移除了 Vast.ai 的数值明细、经 Mulligan 转述的 eBay 要价，以及私有存储路径；其余内容未改。另：公开看板的每日计算按本文第 10 节「来源准入标准」，<strong>不使用 Vast.ai 数据</strong>，因此公开 NAV 与内部看板的数值可能不同。高中生研究项目；指示性数据；不构成投资建议。</p>
+<p><strong>Public copy note:</strong> This document is an English translation of the project's internal methodology_v0.md (2026-11-16 PT). To respect data licences, this public version removes the Vast.ai figures, the eBay asking prices relayed by Mulligan, and private storage paths; everything else is unchanged in substance. The public dashboard's daily calculation follows the "source admission criteria" in Section 10 and <strong>does not use Vast.ai data</strong>. In addition, the public data does not publish any method value with fewer than 3 observations (see the repository README). High-school student research project. Indicative data only. Not investment advice.</p>
 </blockquote>
-<p><strong>文件状态：</strong> 征求意见稿（Draft for review），非正式生效的基准文件<br />
-<strong>版本：</strong> v0.1-draft<br />
-<strong>日期：</strong> 2026-11-16（太平洋时间，PT）<br />
-<strong>编制说明：</strong> 本文依据同日在隔离环境中对公开数据源的实测（HTTP GET/POST、无登录绕过）撰写。所有价格与条数均为当日抓取结果，未经成交核验的挂牌价一律标注为 listed，不作为已实现成交。尚未校准的参数一律标为 <strong>待校准（to-be-calibrated）</strong>，不编造数值。</p>
+<p><strong>Document status:</strong> Draft for review; not an effective benchmark document<br />
+<strong>Version:</strong> v0.1-draft<br />
+<strong>Date:</strong> 2026-11-16 (Pacific Time, PT)<br />
+<strong>Preparation note:</strong> This document is based on same-day tests of public data sources from an isolated environment (HTTP GET/POST, no login and no circumvention). All prices and counts are the results captured that day. Listing prices not verified as transactions are always labelled "listed" and are never treated as realized transactions. Parameters that have not been calibrated are always labelled <strong>to-be-calibrated</strong>; no values are invented.</p>
 <hr />
-<h2 id="1-index-definition">1. 指数定义（Index definition）</h2>
-<p><strong>ComputeNAV</strong>（亦称 AI NAV Index）是一个以「在役 GPU 作为资产、按型号 × 机龄」每日发布的 <strong>可变现资产净值（realizable net asset value, NAV）</strong> 指数。其核心问题是：</p>
+<h2 id="1-index-definition">1. Index definition</h2>
+<p><strong>ComputeNAV</strong> (also called the AI NAV Index) is a daily index of <strong>realizable net asset value (NAV)</strong> for in-service GPUs treated as assets, by "model × age". Its core question is:</p>
 <blockquote>
-<p>一张（或一台标准化后的）指定型号、指定机龄的在役数据中心 GPU，在有序二手市场上，今天大致能变现多少美元？</p>
+<p>Roughly how many US dollars could one in-service data-center GPU of a given model and age (or one standardized system) be realized for today in an orderly secondary market?</p>
 </blockquote>
-<p>这里的 NAV 取的是 <strong>清算/变现口径（liquidation basis）</strong>，更接近评估实务中的 <strong>有序清算价值（Orderly Liquidation Value, OLV）</strong>，而不是：</p>
+<p>NAV here is on a <strong>liquidation basis</strong>, closer to the appraisal concept of <strong>Orderly Liquidation Value (OLV)</strong>. It is not:</p>
 <ul>
-<li>租金价格指数（rental / compute-rate index）所回答的「租一小时多少钱」；</li>
-<li>也不是只把未来租金做贴现得到的「收益法公允价值（income-approach fair value）」；</li>
-<li>更不是会计账面净值（carrying amount / book value）。</li>
+<li>what a rental / compute-rate index answers ("how much does one hour cost");</li>
+<li>an "income-approach fair value" obtained only by discounting future rents;</li>
+<li>and certainly not an accounting carrying amount / book value.</li>
 </ul>
-<p>指数的官方读数是 <strong>美元/卡（USD per GPU card）</strong>，必要时同时发布「整机折算单卡价」与「急售地板价」。成交观察与挂牌观察 <strong>分库存储、分口径标注、分别披露</strong>，不得混成一个未经标注的均价。</p>
-<p><strong>设计原则：</strong></p>
+<p>The official reading of the index is <strong>USD per GPU card</strong>; where necessary a "system-derived per-card price" and a "quick-sale floor" are published alongside. Transaction observations and listing observations are <strong>stored separately, labelled separately and disclosed separately</strong>; they must never be blended into one unlabelled average.</p>
+<p><strong>Design principles:</strong></p>
 <ol>
-<li><strong>市场法为主。</strong> 优先使用可观察的二手成交（sold transactions），挂牌价（listings）只作为次级输入，且必须带标签。  </li>
-<li><strong>三法交叉验证。</strong> 市场法、收益法（income approach：公开租金折现剩余寿命净现金流）、成本法（cost approach：新卡参考价 × 机龄折旧）并列计算，偏差超阈值时发出质量旗标，而不是悄悄用单一来源替代。  </li>
-<li><strong>可审计。</strong> 每日原始快照带时间戳与 SHA-256，解析与抓取分离，方法变更后可用快照重算全部历史。  </li>
-<li><strong>中立。</strong> 指数管理人不下场交易、不做市、不承保、不提供残值互换或贷款承销。  </li>
+<li><strong>Market approach first.</strong> Observable secondary-market sold transactions are preferred; listings are only a secondary input and must always be labelled.  </li>
+<li><strong>Three-approach cross-check.</strong> The market approach, the income approach (discounting net cash flows from public rents over the remaining life) and the cost approach (new-card reference price × age depreciation) are computed side by side. When their divergence exceeds a threshold a quality flag is raised, instead of silently substituting a single source.  </li>
+<li><strong>Auditable.</strong> Daily raw snapshots carry a timestamp and SHA-256; parsing is separated from fetching; after a methodology change the full history can be recomputed from snapshots.  </li>
+<li><strong>Neutral.</strong> The index administrator does not trade, make markets, underwrite, or offer residual-value swaps or loan underwriting.  </li>
 </ol>
 <hr />
-<h2 id="2-scope-v0">2. 覆盖范围（Scope）— v0</h2>
+<h2 id="2-scope-v0">2. Scope — v0</h2>
 <table>
 <thead>
 <tr>
-<th>项目</th>
-<th>v0 范围</th>
-<th>明确不在 v0 范围内</th>
+<th>Item</th>
+<th>v0 scope</th>
+<th>Explicitly out of v0 scope</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td>型号</td>
-<td>NVIDIA H100（SXM / PCIe；NVL 单独作为观察桶，暂不进入综合指数，<strong>待校准</strong>是否并入 H100）与 NVIDIA A100（40GB / 80GB；SXM / PCIe 分桶）</td>
-<td>H200、B200、B300、GB200/GB300、AMD Instinct、消费级 GPU</td>
+<td>Models</td>
+<td>NVIDIA H100 (SXM / PCIe; NVL is a separate observation bucket and is not yet in the composite; whether to merge it into H100 is <strong>to-be-calibrated</strong>) and NVIDIA A100 (40GB / 80GB; SXM / PCIe in separate buckets)</td>
+<td>H200, B200, B300, GB200/GB300, AMD Instinct, consumer GPUs</td>
 </tr>
 <tr>
-<td>单位</td>
-<td>单卡可变现价值（USD/card）</td>
-<td>未拆分的机柜、未标准化的整柜 NVL72</td>
+<td>Unit</td>
+<td>Realizable value per card (USD/card)</td>
+<td>Unsplit racks, non-standardized full-rack NVL72</td>
 </tr>
 <tr>
-<td>地域</td>
-<td>以可获得的公开美元或可按当日汇率折算的报价为主，记录原始币种与税口径</td>
-<td>不声称已覆盖全球所有司法辖区的成交</td>
+<td>Geography</td>
+<td>Mainly publicly available USD quotes or quotes convertible at the day's FX rate; original currency and tax basis are recorded</td>
+<td>No claim of covering transactions in all jurisdictions worldwide</td>
 </tr>
 <tr>
-<td>频率</td>
-<td>目标为每个工作日一次官方读数；v0 数据收集机按日运行</td>
-<td>盘中实时 NAV</td>
+<td>Frequency</td>
+<td>Target: one official reading per business day; the v0 data collector runs daily</td>
+<td>Intraday real-time NAV</td>
 </tr>
 <tr>
-<td>机龄</td>
-<td>按「型号 × 形态 × 显存 × 机龄桶」输出；机龄缺失时进入「机龄未知」桶，<strong>不臆造机龄</strong></td>
-<td>把未知机龄当作新品或平均机龄</td>
+<td>Age</td>
+<td>Output by "model × form factor × memory × age bucket"; when age is missing the observation goes into an "age unknown" bucket — <strong>age is never guessed</strong></td>
+<td>Treating unknown age as new or as average age</td>
 </tr>
 <tr>
-<td>条件</td>
-<td>新、翻新、已测使用、未测、仅零件；分桶</td>
-<td>混条件加权而不披露</td>
+<td>Condition</td>
+<td>New, refurbished, used-tested, untested, parts only; bucketed separately</td>
+<td>Blending conditions without disclosure</td>
 </tr>
 </tbody>
 </table>
-<p>综合指数（Composite）按在役装机量（installed base）加权，权数来源与数值 <strong>待校准</strong>，在权数确定前只发布分型号子指数，不发布一个假装精确的综合点位。</p>
+<p>The composite index is weighted by installed base; the weight source and values are <strong>to-be-calibrated</strong>. Until the weights are set, only per-model sub-indices are published, not a falsely precise composite level.</p>
 <hr />
-<h2 id="3-competitor-comparison">3. 与现有竞品的定位（Competitor comparison）</h2>
-<p><strong>残值/NAV 已不是市场空白。</strong> 2026 年至少三家已从租金指数向残值、抵押或对冲延伸。ComputeNAV 的差异化不在于「第一个谈论残值」，而在于：<strong>以可观察的二手变现（liquidation / OLV）为主要依据，做按资产、可审计、公开方法论、且管理人不交易不承保的 NAV。</strong></p>
-<p>以下陈述均核自 2026-11-16 打开的原文页面，而非二手转述。</p>
+<h2 id="3-competitor-comparison">3. Competitor comparison</h2>
+<p><strong>Residual value / NAV is no longer an empty space.</strong> In 2026 at least three firms have extended from rental indices into residual value, collateral or hedging. ComputeNAV's differentiation is not "being the first to talk about residual value" but: <strong>an asset-level, auditable NAV with a public methodology, based primarily on observable secondary-market liquidation (OLV), whose administrator neither trades nor underwrites.</strong></p>
+<p>All statements below were checked against the original pages opened on 2026-11-16, not second-hand summaries.</p>
 <h3 id="31-silicon-data-gpu-residual-value">3.1 Silicon Data — GPU Residual Value</h3>
 <ul>
-<li><strong>上线：</strong> 2026-08-24（新闻稿时间 13:30 GMT）。来源：<a href="https://www.einpresswire.com/article/936056292/silicon-data-launches-monthly-gpu-residual-value-benchmarks-for-ai-infrastructure-finance">EIN Presswire 新闻稿</a>。  </li>
-<li><strong>覆盖：</strong> 按月发布 H100、A100、B200 的公允价值，用于资产支持融资、机队规划与盯市。同上新闻稿。  </li>
-<li><strong>方法：</strong> 产品页写明是 <strong>连续 DCF</strong>：0–36 个月取 GPU Forward Curve 租金，36 个月以后在最后一个远期值上叠加复合尾部衰减；利用率按 (k \cdot e^{-rt}) 指数衰减；运营成本用全球混合固定比率；远期曲线变动时残值会重算。来源：<a href="https://www.silicondata.com/products/gpu-residual-value">产品页</a>。  </li>
-<li><strong>本质：</strong> 「由未来租金隐含的公允价值」，不是以二手成交为主的可变现 NAV。新闻稿原话是：每项估计代表一块 GPU「由其剩余使用寿命内预期产生的租金净收入所隐含的折旧后价值」。  </li>
-<li><strong>治理：</strong> 租金指数治理文件声明遵循 IOSCO 金融基准原则。来源：<a href="https://www.silicondata.com/documents/silicon-data-index-governance.pdf">治理 PDF</a>。残值模型细节在产品 FAQ 中公开了一部分，但完整可重算公式中的衰减率、利用率初值、运营成本比率等参数以门户为准，本文不臆造。</li>
+<li><strong>Launch:</strong> 2026-08-24 (press release time 13:30 GMT). Source: <a href="https://www.einpresswire.com/article/936056292/silicon-data-launches-monthly-gpu-residual-value-benchmarks-for-ai-infrastructure-finance">EIN Presswire press release</a>.  </li>
+<li><strong>Coverage:</strong> Monthly fair values for H100, A100 and B200, for asset-backed financing, fleet planning and mark-to-market. Same press release.  </li>
+<li><strong>Method:</strong> The product page describes a <strong>continuous DCF</strong>: months 0–36 use the GPU Forward Curve rents; after month 36 a compounding tail decay is applied to the last forward value; utilization decays exponentially as (k \cdot e^{-rt}); operating cost uses a global blended fixed ratio; residual values are recomputed when the forward curve moves. Source: <a href="https://www.silicondata.com/products/gpu-residual-value">product page</a>.  </li>
+<li><strong>Nature:</strong> "Fair value implied by future rents", not a realizable NAV based mainly on secondary transactions. The press release says each estimate represents a GPU's "depreciated value implied by the net rental income it is expected to generate over its remaining useful life".  </li>
+<li><strong>Governance:</strong> The rental-index governance document states alignment with the IOSCO Principles for Financial Benchmarks. Source: <a href="https://www.silicondata.com/documents/silicon-data-index-governance.pdf">governance PDF</a>. Some residual-model details are public in the product FAQ, but parameters needed for a fully reproducible formula (decay rate, initial utilization, operating-cost ratio, etc.) are portal-only; this document does not guess them.</li>
 </ul>
-<h3 id="32-ornn-residual-value-swap-depreciation-curves">3.2 Ornn — Residual Value Swap 与 Depreciation Curves</h3>
+<h3 id="32-ornn-residual-value-swap-and-depreciation-curves">3.2 Ornn — Residual Value Swap and Depreciation Curves</h3>
 <ul>
-<li><strong>GPU Value Protection / Residual Value Swap (RVS)：</strong> 页面标注 2026-01-25。产品保证未来某一日 GPU 的最低出售价格；持有人可选择按约定价出售。原文同时出现「quarterly premium」与「upfront premium」两种保费表述，存在内部不一致，本文不予调和。来源：<a href="https://ornn.com/insights/residualvalue">Ornn 洞察页</a>。这是 <strong>风险承保/互换产品</strong>，不是公开的清算 NAV 指数。  </li>
-<li><strong>Depreciation Curves：</strong> 2026-11-10，Ornn 官方账号发文称「modeling GPU hardware values from A100 to GB300 using real transaction data」，并称曲线可为贷款人与机队运营商估计残值提供基础。来源：<a href="https://x.com/OrnnExchange/status/2120258550488338902">X 原文</a>（时间戳：2026-11-10，8:53 PM；推文指向 <a href="https://data.ornn.com/analytics">data.ornn.com/analytics</a>）。  </li>
-<li><strong>透明度：</strong> 本次打开 analytics 与 methodology 页面，<strong>未见</strong>可独立复现的 Depreciation Curves 公式、样本定义或成交与挂牌的区分规则。官方只声称使用「真实成交数据」，方法论未对公众完整公开。OCPI 租金成交指数本身有公开方法论（<a href="https://data.ornn.com/methodology">data.ornn.com/methodology</a>），不要把 OCPI 的透明度外推到 Depreciation Curves。</li>
+<li><strong>GPU Value Protection / Residual Value Swap (RVS):</strong> Page dated 2026-01-25. The product guarantees a minimum sale price for a GPU at a future date; the holder may choose to sell at the agreed price. The text uses both "quarterly premium" and "upfront premium", an internal inconsistency this document does not reconcile. Source: <a href="https://ornn.com/insights/residualvalue">Ornn insights page</a>. This is a <strong>risk-underwriting / swap product</strong>, not a public liquidation NAV index.  </li>
+<li><strong>Depreciation Curves:</strong> On 2026-11-10 Ornn's official account posted that it is "modeling GPU hardware values from A100 to GB300 using real transaction data", and that the curves can give lenders and fleet operators a basis for estimating residual value. Source: <a href="https://x.com/OrnnExchange/status/2120258550488338902">original post on X</a> (timestamp: 2026-11-10, 8:53 PM; the post links to <a href="https://data.ornn.com/analytics">data.ornn.com/analytics</a>).  </li>
+<li><strong>Transparency:</strong> On opening the analytics and methodology pages, <strong>no</strong> independently reproducible Depreciation Curves formula, sample definition or rule separating transactions from listings was found. Ornn only states that it uses "real transaction data"; the methodology is not fully public. The OCPI rental-transaction index itself has a public methodology (<a href="https://data.ornn.com/methodology">data.ornn.com/methodology</a>); OCPI's transparency should not be extrapolated to the Depreciation Curves.</li>
 </ul>
-<h3 id="33-liquid-compute-lci">3.3 Liquid Compute — LCI 看跌期权与组合打标</h3>
+<h3 id="33-liquid-compute-lci-puts-and-portfolio-marks">3.3 Liquid Compute — LCI puts and portfolio marks</h3>
 <ul>
-<li>2026 年 10 月洞察文章写明：可用 <strong>现金结算的 LCI（Liquid Compute Index）看跌期权</strong> 为计算费率设定地板，从而对残值/再出租风险定价；并写「If you're a lender with a GPU book, we can put a mark on it and a hedge around it。」来源：<a href="https://liquidcompute.com/insights/hedging-when-credit-tightens">Hedging when credit tightens</a>。  </li>
-<li>同一篇文章给出的「预付比例从 65% 提到 85%」是 <strong>illustrative（示例）</strong>，不是已披露的市场统计。LCI 的数值、历史与方法论在公开页面上不可见。  </li>
-<li>文中声明 Liquid Compute 不是这些 OTC 期权的对手方，衍生品交易所（PMEX）尚待 CFTC 的 DCM/DCO 认定。这是 <strong>对冲与打标服务</strong>，不是独立、公开、可审计的变现 NAV 指数。</li>
+<li>An October 2026 insight article says <strong>cash-settled puts on the LCI (Liquid Compute Index)</strong> can set a floor on compute rates and thereby price residual / re-leasing risk, and says "If you're a lender with a GPU book, we can put a mark on it and a hedge around it." Source: <a href="https://liquidcompute.com/insights/hedging-when-credit-tightens">Hedging when credit tightens</a>.  </li>
+<li>The "advance rate raised from 65% to 85%" in the same article is <strong>illustrative</strong>, not a disclosed market statistic. LCI values, history and methodology are not visible on public pages.  </li>
+<li>The article states that Liquid Compute is not the counterparty to these OTC options, and that the derivatives exchange (PMEX) is awaiting CFTC DCM/DCO designation. This is a <strong>hedging and marking service</strong>, not an independent, public, auditable realizable-NAV index.</li>
 </ul>
-<h3 id="34-computenav">3.4 ComputeNAV 相对上述三家的差异</h3>
+<h3 id="34-how-computenav-differs-from-the-three">3.4 How ComputeNAV differs from the three</h3>
 <table>
 <thead>
 <tr>
@@ -114,272 +114,272 @@
 <th>Silicon Data Residual Value</th>
 <th>Ornn Depreciation Curves / RVS</th>
 <th>Liquid Compute LCI put / mark</th>
-<th>ComputeNAV（本指数）</th>
+<th>ComputeNAV (this index)</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td>主输入</td>
-<td>租金远期曲线的 DCF</td>
-<td>宣称成交数据（曲线方法未公开）；RVS 为保底合约</td>
-<td>租金指数看跌 + 内部报价/成交日志</td>
-<td><strong>二手成交与挂牌（分列）</strong>，租金与折旧只做交叉验证</td>
+<td>Main input</td>
+<td>DCF of rental forward curve</td>
+<td>Claimed transaction data (curve method not public); RVS is a floor contract</td>
+<td>Rental-index puts + internal quotes/trade logs</td>
+<td><strong>Secondary transactions and listings (kept separate)</strong>; rents and depreciation are cross-checks only</td>
 </tr>
 <tr>
-<td>价值口径</td>
-<td>收益法公允价值</td>
-<td>未公开的硬件价值曲线；RVS 是合约地板</td>
-<td>费率地板 / 组合打标</td>
-<td><strong>可变现 / OLV（liquidation-basis NAV）</strong></td>
+<td>Value basis</td>
+<td>Income-approach fair value</td>
+<td>Non-public hardware value curve; RVS is a contractual floor</td>
+<td>Rate floor / portfolio mark</td>
+<td><strong>Realizable / OLV (liquidation-basis NAV)</strong></td>
 </tr>
 <tr>
-<td>粒度</td>
-<td>按代际月度估计</td>
-<td>曲线（权限页）</td>
-<td>组合/交易层面</td>
-<td><strong>按资产：型号 × 形态 × 显存 × 机龄</strong></td>
+<td>Granularity</td>
+<td>Monthly estimate by generation</td>
+<td>Curves (gated page)</td>
+<td>Portfolio / trade level</td>
+<td><strong>Per asset: model × form factor × memory × age</strong></td>
 </tr>
 <tr>
-<td>方法论</td>
-<td>产品页公开 DCF 框架，部分参数未完全给出</td>
-<td>Depreciation Curves 方法未对公众公开</td>
-<td>LCI 方法未公开</td>
-<td><strong>全文公开，快照可重算</strong></td>
+<td>Methodology</td>
+<td>DCF framework public on product page; some parameters not fully given</td>
+<td>Depreciation Curves method not public</td>
+<td>LCI method not public</td>
+<td><strong>Fully public; recomputable from snapshots</strong></td>
 </tr>
 <tr>
-<td>利益冲突结构</td>
-<td>指数公司；姐妹公司 Compute Exchange 从事交易</td>
-<td>同时做指数、市场与残值互换（风险承接）</td>
-<td>同时做指数、撮合、融资与对冲服务（文中称不自营对手方）</td>
-<td><strong>不交易、不做市、不承保、不放贷</strong></td>
+<td>Conflict-of-interest structure</td>
+<td>Index company; sister company Compute Exchange trades</td>
+<td>Runs index, marketplace and residual-value swaps (takes risk)</td>
+<td>Runs index, matching, financing and hedging services (says it is not a principal counterparty)</td>
+<td><strong>Does not trade, make markets, underwrite or lend</strong></td>
 </tr>
 </tbody>
 </table>
-<p><strong>监管背景（非本指数的申请状态）：</strong> CFTC 关于算力衍生品的征求意见（RIN 3038-AF77，91 FR 54259）已于 2026-10-20 截止。该程序讨论的是租金价格类合约，并不覆盖以清算/抵押价值为标的的基准。这是 NAV 指数的补位空间，但不构成任何监管认可。</p>
+<p><strong>Regulatory context (not an application status of this index):</strong> The CFTC request for comment on compute derivatives (RIN 3038-AF77, 91 FR 54259) closed on 2026-10-20. That proceeding concerns rental-price contracts and does not cover benchmarks referencing liquidation / collateral value. This leaves room for a NAV index but does not constitute any regulatory endorsement.</p>
 <hr />
-<h2 id="4-2026-11-16-data-sources">4. 数据源与 2026-11-16 摸底结果（Data sources）</h2>
-<p>摸底原则：只报告实际请求得到的结果；被拦截就写拦截；样本薄就写薄。原始字节、HTTP 状态与 SHA-256、来源登记表与当日价格样本保存在项目私有存储中（不随公开仓库发布）。</p>
-<p>抓取窗口约 2026-11-16 19:45–20:30 PT（对应 2026-11-17 03:45–04:30 UTC）。汇率（仅用于把外币挂牌折成便于对照的美元，<strong>不是估值本身</strong>）来自 open.er-api.com，最近更新 2026-11-17 00:02:31 UTC：1 USD = 0.908584 EUR = 0.758255 GBP（约 1 EUR = 1.1006 USD，1 GBP = 1.3188 USD）。</p>
-<h3 id="41">4.1 市场法来源（主权重，但今日成交样本为零）</h3>
-<p><strong>今日获得的已售成交（sold transactions）：0 条。</strong> 这是 v0 启动时最重要的事实，必须在每一次试算中作为质量旗标出现。</p>
+<h2 id="4-data-sources-and-the-2026-11-16-survey">4. Data sources and the 2026-11-16 survey</h2>
+<p>Survey principle: report only what actual requests returned; if blocked, say blocked; if the sample is thin, say thin. Raw bytes, HTTP status and SHA-256, the source register and the day's price samples are kept in the project's private storage (not published with the public repository).</p>
+<p>Fetch window approx. 2026-11-16 19:45–20:30 PT (2026-11-17 03:45–04:30 UTC). FX rates (used only to convert foreign-currency listings into USD for comparison — <strong>not the valuation itself</strong>) came from open.er-api.com, last updated 2026-11-17 00:02:31 UTC: 1 USD = 0.908584 EUR = 0.758255 GBP (approx. 1 EUR = 1.1006 USD, 1 GBP = 1.3188 USD).</p>
+<h3 id="41-market-approach-sources-main-weight-but-zero-sold-transactions-today">4.1 Market-approach sources (main weight, but zero sold transactions today)</h3>
+<p><strong>Sold transactions obtained today: 0.</strong> This is the most important fact at v0 launch and must appear as a quality flag in every trial calculation.</p>
 <table>
 <thead>
 <tr>
-<th>来源</th>
-<th>访问结果</th>
-<th>当日相关数据点</th>
-<th>建议角色</th>
+<th>Source</th>
+<th>Access result</th>
+<th>Relevant data points today</th>
+<th>Suggested role</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td>eBay 在售 / 已售页面</td>
+<td>eBay active / sold pages</td>
 <td>HTTP 403</td>
 <td>0</td>
-<td>目标主源（sold）；需官方 Browse/合作 API，禁止绕过验证码</td>
+<td>Target primary source (sold); requires the official Browse / partner API; captcha circumvention is forbidden</td>
 </tr>
 <tr>
-<td>eBay Browse API（无密钥）</td>
+<td>eBay Browse API (no key)</td>
 <td>HTTP 403</td>
 <td>0</td>
-<td>同上，申请开发者凭证后再测</td>
+<td>Same; retest after obtaining developer credentials</td>
 </tr>
 <tr>
-<td>Genius HPC 二手目录</td>
-<td>200，HTML 含固定 ex-VAT 欧元价</td>
-<td>6 个在售 SKU（含 1 台 DGX 整机）+ 同页 6 个 New From 新卡价</td>
-<td>v0 较可用的经销商挂牌；仍是 ask 不是成交</td>
+<td>Genius HPC secondary catalog</td>
+<td>200, HTML with fixed ex-VAT EUR prices</td>
+<td>6 listed SKUs (incl. 1 DGX system) + 6 "New From" new-card prices on the same page</td>
+<td>The more usable dealer listings in v0; still asks, not transactions</td>
 </tr>
 <tr>
-<td>Creative Compute（英国）</td>
-<td>200；产品页含英镑 ex-VAT 价</td>
-<td>3（H100 卡、A100 卡、8×A100 整机）</td>
-<td>区域挂牌；询价不是订单</td>
+<td>Creative Compute (UK)</td>
+<td>200; product pages with GBP ex-VAT prices</td>
+<td>3 (H100 card, A100 card, 8×A100 system)</td>
+<td>Regional listings; enquiry, not an order</td>
 </tr>
 <tr>
 <td>AnchorGPU</td>
 <td>200</td>
-<td>3 个标价；页面写明 <strong>尚未开放下单</strong></td>
-<td>仅作参考挂牌，权重应很低</td>
+<td>3 prices; page states <strong>orders are not open yet</strong></td>
+<td>Reference listings only; weight should be very low</td>
 </tr>
 <tr>
-<td>ServerPartsDeals 8×H100 整机</td>
-<td>200（产品页）；<code>available=false</code></td>
-<td>1 条已下架/不可售挂牌，$180,000</td>
-<td>可作整机拆单卡的方法示例，<strong>当前不进入计算</strong></td>
+<td>ServerPartsDeals 8×H100 system</td>
+<td>200 (product page); <code>available=false</code></td>
+<td>1 delisted / unavailable listing, $180,000</td>
+<td>Usable as a worked example of splitting a system into cards; <strong>not in the calculation for now</strong></td>
 </tr>
 <tr>
-<td>Clustermelt 月度区间</td>
+<td>Clustermelt monthly ranges</td>
 <td>200</td>
-<td>6 个型号的低–高区间（主读数日期 2026-10-01）</td>
-<td>仅交叉核对，v0 正式计算权重为 0</td>
+<td>Low–high ranges for 6 models (main reading dated 2026-10-01)</td>
+<td>Cross-check only; zero weight in the v0 official calculation</td>
 </tr>
 <tr>
-<td>Mulligan（eBay 挂牌跟踪）</td>
+<td>Mulligan (eBay listing tracker)</td>
 <td>200</td>
-<td>3 个型号的「最低要价」（更新 2026-11-16，自述不是成交价）</td>
-<td>仅观察；未经本环境在 eBay 上复验，正式权重为 0</td>
+<td>"Lowest ask" for 3 models (updated 2026-11-16; self-described as not transaction prices)</td>
+<td>Watch only; not re-verified on eBay from this environment; zero official weight</td>
 </tr>
 <tr>
 <td>ServerMonkey / Newegg</td>
 <td>403</td>
 <td>0</td>
-<td>受阻</td>
+<td>Blocked</td>
 </tr>
 <tr>
-<td>TechMikeNY、CDW、Exxact、Thinkmate 等</td>
-<td>200 但静态 HTML 无可用价</td>
+<td>TechMikeNY, CDW, Exxact, Thinkmate, etc.</td>
+<td>200 but no usable prices in static HTML</td>
 <td>0</td>
-<td>需许可的 API 或后续允许的采集方式</td>
+<td>Needs a licensed API or a later permitted collection method</td>
 </tr>
 <tr>
 <td>GovDeals / GovLiquidation</td>
 <td>403</td>
 <td>0</td>
-<td>清算拍卖是 OLV 的理想来源，今日不可达</td>
+<td>Liquidation auctions are the ideal OLV source; unreachable today</td>
 </tr>
 <tr>
 <td>IronPlanet</td>
 <td>405</td>
 <td>0</td>
-<td>受阻</td>
+<td>Blocked</td>
 </tr>
 <tr>
 <td>HiBid / Public Surplus</td>
-<td>无相关标的</td>
+<td>No relevant lots</td>
 <td>0</td>
-<td>当日未发现 H100/A100 拍品</td>
+<td>No H100/A100 lots found that day</td>
 </tr>
 <tr>
 <td>americancompute.com</td>
-<td>停放页</td>
+<td>Parked page</td>
 <td>0</td>
-<td>不用</td>
+<td>Do not use</td>
 </tr>
 <tr>
 <td>Compute Exchange</td>
-<td>200，仅有预留租赁产品导航</td>
-<td>0 条二手售价</td>
-<td>继续观察，不是当前公开成交磁带</td>
+<td>200, only navigation for reserved rental products</td>
+<td>0 secondary sale prices</td>
+<td>Keep watching; not a current public transaction tape</td>
 </tr>
 </tbody>
 </table>
-<p><strong>当日抓到的部分挂牌样本（均为 listed，不是 sold）：</strong></p>
+<p><strong>Some listing samples captured that day (all listed, not sold):</strong></p>
 <ul>
-<li>Genius HPC（欧元，未税，在库，18 个月质保）：H100 PCIe €10,995.60；H100 SXM €10,348.80（仅模块）；H100 NVL €18,433.80；A100 80GB PCIe €5,303.76；A100 80GB SXM €6,791.40；DGX H100（8 卡）€158,466。  </li>
-<li>Creative Compute（英镑，未税，询价）：H100 80GB PCIe 翻新 £15,750；A100 80GB PCIe 翻新 £6,450；8×A100 整机 £58,500。  </li>
-<li>AnchorGPU（美元，未开放下单）：H100 SXM $21,900；H100 PCIe $19,400；A100 SXM 80GB $9,800。  </li>
-<li>ServerPartsDeals：Dell XE9680 8×H100 SXM5 卖家翻新整机标价 $180,000，<strong>当前不可售</strong>。若简单除以 8 得 $22,500/卡，但必须扣除 CPU、内存（32×64GB DDR5）、机箱与电源后才能进入单卡桶——<strong>本文件不给出未经校准的扣减额</strong>。  </li>
-<li>Mulligan 转述的 eBay 最低要价：<strong>公开版已移除</strong>（该数据源自 eBay 挂牌，沿用 eBay 与 Mulligan 的使用条款，未获授权不公开）。  </li>
+<li>Genius HPC (EUR, ex-VAT, in stock, 18-month warranty): H100 PCIe €10,995.60; H100 SXM €10,348.80 (module only); H100 NVL €18,433.80; A100 80GB PCIe €5,303.76; A100 80GB SXM €6,791.40; DGX H100 (8 cards) €158,466.  </li>
+<li>Creative Compute (GBP, ex-VAT, enquiry): H100 80GB PCIe refurbished £15,750; A100 80GB PCIe refurbished £6,450; 8×A100 system £58,500.  </li>
+<li>AnchorGPU (USD, orders not open): H100 SXM $21,900; H100 PCIe $19,400; A100 SXM 80GB $9,800.  </li>
+<li>ServerPartsDeals: Dell XE9680 8×H100 SXM5 seller-refurbished system listed at $180,000, <strong>currently unavailable</strong>. Simply dividing by 8 gives $22,500/card, but CPUs, memory (32×64GB DDR5), chassis and power supplies must be deducted before it can enter a per-card bucket — <strong>this document does not give an uncalibrated deduction</strong>.  </li>
+<li>eBay lowest asks relayed by Mulligan: <strong>removed from the public version</strong> (the data derives from eBay listings and inherits eBay's and Mulligan's terms of use; not published without authorization).  </li>
 </ul>
-<p>同一天、同一「H100 PCIe / SXM 二手」标签下，欧洲经销商未税挂牌、英国询价、美国参考价与第三方 eBay 要价之间 <strong>离散极大</strong>。v0 不得用简单平均把这些数捏成一个「市场价」。这恰恰说明：必须分来源、分币种税口径、分可执行性，并等待成交样本。</p>
-<h3 id="42">4.2 收益法来源（公开租金）</h3>
-<p>租金是 NAV 的上游输入，不是竞品替代。今日这一层 <strong>明显厚于市场法</strong>。</p>
+<p>On the same day, under the same "used H100 PCIe / SXM" label, European dealer ex-VAT listings, UK enquiry prices, US reference prices and third-party eBay asks are <strong>extremely dispersed</strong>. v0 must not squeeze these into one "market price" by simple averaging. This is exactly why observations must be separated by source, by currency and tax basis, and by executability, while waiting for transaction samples.</p>
+<h3 id="42-income-approach-sources-public-rents">4.2 Income-approach sources (public rents)</h3>
+<p>Rents are an upstream input to NAV, not a competing substitute. Today this layer is <strong>clearly thicker than the market approach</strong>.</p>
 <table>
 <thead>
 <tr>
-<th>来源</th>
-<th>结果</th>
-<th>当日 H100/A100 观察</th>
-<th>角色与限制</th>
+<th>Source</th>
+<th>Result</th>
+<th>H100/A100 observations today</th>
+<th>Role and limits</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td>Vast.ai 公共定价 feed</td>
-<td>200，JSON，更新 2026-11-17T03:30:23Z</td>
-<td>5 个型号的 min / p10 / median / 可租数量，各带最多 90 日历史</td>
-<td>市场型挂牌租金统计。<strong>许可声明：用于指数、基准或衍生数据产品须向 data@vast.ai 申请数据许可。</strong> 研究引用需署名。另：feed 中 A100 SXM4 的 vram 标为 80GB，但 bundles 里部分 offer 的 <code>gpu_ram=40960</code>，必须以 offer 级显存为准。</td>
+<td>Vast.ai public pricing feed</td>
+<td>200, JSON, updated 2026-11-17T03:30:23Z</td>
+<td>min / p10 / median / available count for 5 models, each with up to 90 days of history</td>
+<td>Market-style listed rental statistics. <strong>Licence statement: use in an index, benchmark or derivative data product requires a data licence from data@vast.ai.</strong> Research citation requires attribution. Also: the feed labels A100 SXM4 vram as 80GB, but some offers in bundles have <code>gpu_ram=40960</code>; offer-level memory must take precedence.</td>
 </tr>
 <tr>
-<td>Vast.ai bundles API（无密钥 POST）</td>
-<td>200；GET 400，PUT 404</td>
-<td>（公开版已移除 Vast.ai 数据明细：许可待定）</td>
-<td>提供单条 offer 的租金、显存、地点。H100 在该抽样中偏薄。同样受数据许可约束。</td>
+<td>Vast.ai bundles API (keyless POST)</td>
+<td>200; GET 400, PUT 404</td>
+<td>(Vast.ai details removed from the public version: licence pending)</td>
+<td>Provides per-offer rent, memory and location. H100 is thin in this sample. Subject to the same data licence.</td>
 </tr>
 <tr>
-<td>RunPod GraphQL <code>gpuTypes</code>（本次无密钥可用）</td>
+<td>RunPod GraphQL <code>gpuTypes</code> (usable without a key this time)</td>
 <td>200</td>
-<td>6 个相关 gpuTypes，含 Community / Secure / 期限价</td>
-<td>云厂商价目。Community 与 Secure 必须分列。不保证将来永久免密钥。</td>
+<td>6 relevant gpuTypes, incl. Community / Secure / term prices</td>
+<td>Cloud provider price list. Community and Secure must be kept separate. Keyless access is not guaranteed in future.</td>
 </tr>
 <tr>
-<td>Lambda 公共定价页</td>
-<td>200（官方 instance-types API 为 401）</td>
-<td>多条 instance 与 1-Click Cluster 价</td>
-<td>价目表；预留集群单价高于单卡实例，须分期限。</td>
+<td>Lambda public pricing page</td>
+<td>200 (official instance-types API returns 401)</td>
+<td>Multiple instance and 1-Click Cluster prices</td>
+<td>Price list; reserved cluster unit prices are higher than single-card instances and must be separated by term.</td>
 </tr>
 <tr>
-<td>DigitalOcean、CoreWeave、Crusoe、Nebius、Together、Hyperstack、Modal、Voltage Park、Massed Compute</td>
-<td>多为 200</td>
-<td>约 20+ 条可解析的 H100/A100 价目</td>
-<td>组成 neocloud 面板。8 卡整节点价格须除以卡数并记录。部分页面同时出现「起价 / 预留 / 现货」，期限 <strong>待确认</strong> 的不得混用。</td>
+<td>DigitalOcean, CoreWeave, Crusoe, Nebius, Together, Hyperstack, Modal, Voltage Park, Massed Compute</td>
+<td>Mostly 200</td>
+<td>~20+ parseable H100/A100 list prices</td>
+<td>Forms the neocloud panel. 8-card node prices must be divided by card count and recorded. Some pages show "from / reserved / spot" at the same time; prices whose term is <strong>unconfirmed</strong> must not be mixed.</td>
 </tr>
 <tr>
-<td>AWS p5 / GCP / Azure 页面</td>
-<td>200 但未解析出可用的美元单价</td>
-<td>0 个可用单价（AWS 仅解析到 p5 规格：p5.4xlarge = 1×H100）</td>
-<td>重要但未完成；改走各云官方定价 API，<strong>不得编造</strong> hyperscaler 单价。</td>
+<td>AWS p5 / GCP / Azure pages</td>
+<td>200 but no usable USD unit price parsed</td>
+<td>0 usable unit prices (AWS only parsed p5 specs: p5.4xlarge = 1×H100)</td>
+<td>Important but incomplete; switch to each cloud's official pricing API; hyperscaler unit prices <strong>must not be invented</strong>.</td>
 </tr>
 <tr>
 <td>GPUHosted prices.json</td>
-<td>200，但文件更新于 2026-08-25</td>
-<td>无可用的当日型号价</td>
-<td>正式计算权重为 0</td>
+<td>200, but file updated 2026-08-25</td>
+<td>No usable same-day model prices</td>
+<td>Zero official weight</td>
 </tr>
 </tbody>
 </table>
-<p><strong>租金样本（均为价目或市场要价，不是已执行的长期合约成交，除非来源另有说明）：</strong></p>
+<p><strong>Rental samples (all list prices or market asks, not executed long-term contract transactions unless the source says otherwise):</strong></p>
 <ul>
-<li>Vast.ai 中位数：<strong>公开版已移除</strong>（Vast.ai 数据用于指数/再分发须取得数据许可，data@vast.ai）。  </li>
-<li>RunPod Community：H100 SXM $2.69、H100 PCIe $1.99、H100 NVL $2.59、A100 SXM 80GB $1.39、A100 PCIe 80GB $1.19、A100 SXM 40GB $1.00。Secure 更高（H100 SXM $4.39）。  </li>
-<li>Lambda：HGX H100 80GB $4.59；H100 SXM $4.69；HGX A100 80GB $3.19；HGX A100 40GB $1.99；16×H100 集群（2 周–1 年）$6.16/GPU 小时。  </li>
-<li>其他价目见样本 CSV（如 DigitalOcean HGX H100 按需 $4.41；CoreWeave 8×H100 节点 $49.24/小时，约合 $6.16/GPU 小时；Modal H100 SXM5 $0.001097/秒，约合 $3.95/小时）。</li>
+<li>Vast.ai medians: <strong>removed from the public version</strong> (use of Vast.ai data in an index / redistribution requires a data licence, data@vast.ai).  </li>
+<li>RunPod Community: H100 SXM $2.69, H100 PCIe $1.99, H100 NVL $2.59, A100 SXM 80GB $1.39, A100 PCIe 80GB $1.19, A100 SXM 40GB $1.00. Secure is higher (H100 SXM $4.39).  </li>
+<li>Lambda: HGX H100 80GB $4.59; H100 SXM $4.69; HGX A100 80GB $3.19; HGX A100 40GB $1.99; 16×H100 cluster (2 weeks–1 year) $6.16/GPU-hour.  </li>
+<li>Other list prices are in the sample CSV (e.g. DigitalOcean HGX H100 on-demand $4.41; CoreWeave 8×H100 node $49.24/hour, ≈ $6.16/GPU-hour; Modal H100 SXM5 $0.001097/second, ≈ $3.95/hour).</li>
 </ul>
-<p>同一 H100 SXM 的公开要价在不同来源之间差异很大（市场型要价明显低于部分价目表的 $4.6+）。收益法必须按 <strong>来源类型（市场型 vs 价目表 vs 预留）</strong> 分层，不能合成一个未注明的「租金」。</p>
-<h3 id="43">4.3 成本法来源（新卡锚点、折旧年限、信贷条款）</h3>
+<p>Public asks for the same H100 SXM differ widely between sources (market-style asks are clearly lower than the $4.6+ on some price lists). The income approach must be stratified by <strong>source type (market-style vs price list vs reserved)</strong> and must not be merged into one unlabelled "rent".</p>
+<h3 id="43-cost-approach-sources-new-card-anchors-depreciation-lives-credit-terms">4.3 Cost-approach sources (new-card anchors, depreciation lives, credit terms)</h3>
 <table>
 <thead>
 <tr>
-<th>来源</th>
-<th>结果</th>
-<th>用途</th>
+<th>Source</th>
+<th>Result</th>
+<th>Use</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td>Genius HPC「New From」</td>
-<td>与二手同页：H100 PCIe €15,708；H100 SXM €14,784；A100 80GB PCIe €7,576.80；A100 80GB SXM €9,702（均未税欧元）</td>
-<td><strong>临时</strong>新卡参考。这是一家欧洲经销商的「新卡起价」，不是 NVIDIA 官方 MSRP，也不是美国渠道价。</td>
+<td>Genius HPC "New From"</td>
+<td>Same page as used: H100 PCIe €15,708; H100 SXM €14,784; A100 80GB PCIe €7,576.80; A100 80GB SXM €9,702 (all EUR ex-VAT)</td>
+<td><strong>Interim</strong> new-card reference. This is one European dealer's "new from" price, not NVIDIA's official MSRP and not a US channel price.</td>
 </tr>
 <tr>
-<td>CDW / Newegg 等美国渠道</td>
-<td>未取得可用单价（403 或无法解析）</td>
-<td>正式的美国新卡参考 <strong>待补</strong></td>
+<td>CDW / Newegg and other US channels</td>
+<td>No usable unit price obtained (403 or unparseable)</td>
+<td>Official US new-card reference <strong>still to be added</strong></td>
 </tr>
 <tr>
-<td>CoreWeave Form 10-K（2025 财年，2026-03-02 申报，登录号 0001769628-26-000104）</td>
-<td>「Technology equipment」直线折旧 <strong>6 年</strong>（自 2023-01-01 起由 5 年改为 6 年）。DDTL 设施用于为计算设备采购融资，并以子公司股权及几乎全部资产作第一优先质押。检索节选中 <strong>未发现</strong> 数字形式的 LTV / 预付比例。</td>
-<td>会计使用寿命与设备融资结构锚点。6 年是账面年限，不是经济残值曲线。</td>
+<td>CoreWeave Form 10-K (FY2025, filed 2026-03-02, accession no. 0001769628-26-000104)</td>
+<td>"Technology equipment" straight-line depreciation over <strong>6 years</strong> (changed from 5 to 6 years effective 2023-01-01). DDTL facilities finance purchases of compute equipment, secured by first-priority pledges of subsidiary equity and substantially all assets. <strong>No</strong> numeric LTV / advance rate was found in the excerpts searched.</td>
+<td>Anchor for accounting useful life and equipment-financing structure. 6 years is a book life, not an economic residual curve.</td>
 </tr>
 <tr>
-<td>IREN Ltd Form 10-K（截至 2026-06-30 的财年，2026-08-27 申报，登录号 0001878848-26-000052）</td>
-<td>质押 GPU 资产按直线法、估计使用寿命 <strong>5 年</strong> 计提折旧。GPU Financing：按采购价 <strong>100%</strong> 提供融资，结构为 24 个月与 36 个月租赁。2026-06-30 由 IE US Hardware 3, LLC 持有并质押的 GPU 及相关基础设施账面净值 <strong>$1,487.1 million</strong>。</td>
-<td>另一家发行人的 5 年寿命锚点，以及公开的 GPU 担保融资条款。100% 采购价的租赁融资 <strong>不等于</strong> 普通抵押贷款的 LTV。</td>
+<td>IREN Ltd Form 10-K (fiscal year ended 2026-06-30, filed 2026-08-27, accession no. 0001878848-26-000052)</td>
+<td>Pledged GPU assets are depreciated straight-line over an estimated useful life of <strong>5 years</strong>. GPU Financing: financing for <strong>100%</strong> of purchase price, structured as 24- and 36-month leases. Net carrying amount of GPUs and related infrastructure held and pledged by IE US Hardware 3, LLC at 2026-06-30: <strong>$1,487.1 million</strong>.</td>
+<td>Another issuer's 5-year life anchor, plus public GPU-secured financing terms. 100%-of-purchase-price lease financing is <strong>not the same as</strong> an ordinary secured-loan LTV.</td>
 </tr>
 <tr>
 <td>Applied Digital 10-K</td>
-<td>PPE 表中有网络/电气/软件 3–5 年等，<strong>没有单独的 GPU 使用寿命行</strong></td>
-<td>不作 GPU 寿命默认值</td>
+<td>PPE table shows networking/electrical/software at 3–5 years etc., <strong>no separate GPU useful-life line</strong></td>
+<td>Not used as a GPU life default</td>
 </tr>
 </tbody>
 </table>
-<p>成本法参数（新卡价、残值率、寿命、残值地板）全部 <strong>待校准</strong>。CoreWeave 6 年与 IREN 5 年只说明「发行人会计政策并不统一」，不能直接写成指数的官方寿命。</p>
+<p>All cost-approach parameters (new-card price, residual rate, life, residual floor) are <strong>to-be-calibrated</strong>. CoreWeave's 6 years and IREN's 5 years only show that "issuer accounting policies are not uniform"; they cannot be written in as the index's official life.</p>
 <hr />
-<h2 id="5-valuation-approaches">5. 三种估值方法与公式（Valuation approaches）</h2>
-<p>每日对每一只标准桶 ( b = )（型号，形态，显存，机龄桶，条件桶）并行计算三个候选值，再按第 8 节规则合成官方 NAV。货币单位一律为 <strong>USD/card</strong>。外币先按估值日公布的汇率来源（v0 建议使用可归档的公开中间价，并在发布说明中写明来源与时间）折算，并保留原币种金额。</p>
-<h3 id="51-market-approach">5.1 市场法（Market approach）— 主权重</h3>
-<p>对桶 ( b ) 内的观察值先做第 6 节标准化，再按第 7 节去极值，然后分别计算：</p>
+<h2 id="5-valuation-approaches-and-formulas">5. Valuation approaches and formulas</h2>
+<p>Each day, for every standard bucket ( b = ) (model, form factor, memory, age bucket, condition bucket), three candidate values are computed in parallel and then combined into the official NAV under the rules of Section 8. The currency unit is always <strong>USD/card</strong>. Foreign currencies are first converted at the FX source published for the valuation date (v0 suggests an archivable public mid rate, with source and time stated in the release notes), and the original-currency amount is retained.</p>
+<h3 id="51-market-approach-main-weight">5.1 Market approach — main weight</h3>
+<p>Observations in bucket ( b ) are first normalized per Section 6, then outliers are handled per Section 7, and then the following are computed separately:</p>
 <p>[
 M^{sold}<em>{b,t} = \mathrm{WeightedMedian}\bigl({p</em>{i,t}^{sold}}\bigr)
 ]</p>
@@ -389,183 +389,183 @@ M^{list}<em>{b,t} = \mathrm{WeightedMedian}\bigl({p</em>{j,t}^{list}}\bigr)
 <p>[
 M_{b,t} = \frac{w^{sold} M^{sold}<em>{b,t} + w^{list} M^{list}</em>{b,t}}{w^{sold} + w^{list}}
 ]</p>
-<p>其中 ( w^{sold} &gt; w^{list} \ge 0 )，具体数值 <strong>待校准</strong>。若当日（或滚动窗口，窗口长度 <strong>待校准</strong>）成交笔数为 0，则 ( M^{sold} ) 记为缺失，不得用挂牌价冒充成交价；可将 ( M_{b,t} ) 暂时等于 ( M^{list}_{b,t} )，但必须给该桶打上 <strong>「仅挂牌 / listings-only」</strong> 质量旗标，并降低该桶在综合指数中的权重（降权规则 <strong>待校准</strong>）。</p>
-<p>权重可考虑来源可信度、是否可执行、是否含税/含运、样本量，方案 <strong>待校准</strong>。v0 建议至少把「不可执行参考价」（如尚未开放下单的目录价）与「可询价的经销商挂牌」分开。</p>
-<h3 id="52-income-approach">5.2 收益法（Income approach）— 交叉验证</h3>
+<p>where ( w^{sold} &gt; w^{list} \ge 0 ); the exact values are <strong>to-be-calibrated</strong>. If the number of transactions on the day (or in the rolling window; window length <strong>to-be-calibrated</strong>) is 0, ( M^{sold} ) is recorded as missing, and listing prices must not be passed off as transaction prices. ( M_{b,t} ) may temporarily equal ( M^{list}_{b,t} ), but the bucket must then carry a <strong>"listings-only"</strong> quality flag and its weight in the composite must be reduced (down-weighting rule <strong>to-be-calibrated</strong>).</p>
+<p>Weights may consider source credibility, executability, whether tax/shipping is included, and sample size; the scheme is <strong>to-be-calibrated</strong>. v0 suggests at least separating "non-executable reference prices" (such as catalog prices for which ordering is not yet open) from "dealer listings available on enquiry".</p>
+<h3 id="52-income-approach-cross-check">5.2 Income approach — cross-check</h3>
 <p>[
 I_{b,t} = \sum_{k=1}^{K_b} \frac{r_{b,t,k}\cdot H_k\cdot u_{b,t,k} - c_{b,t,k}}{(1 + d_{t,k})^{\tau_k}} + \frac{TV_{b,t}}{(1+d)^{T_b}}
 ]</p>
 <ul>
-<li>( r_{b,t,k} )：第 ( k ) 期预期可实现租金（USD/GPU-hour），来自公开租金面板，并按来源类型分层。远期形态 <strong>待校准</strong>（可用期限结构，或在观测租金上施加衰减，但不得在校准前照搬其他厂商的未公开参数）。  </li>
-<li>( H_k )：该期小时数（一般按日历小时或可出租小时，定义 <strong>待校准</strong>）。  </li>
-<li>( u_{b,t,k} )：利用率（utilization），<strong>待校准</strong>。不得假设为 100%。  </li>
-<li>( c_{b,t,k} )：电费、机架、运维等运营成本，<strong>待校准</strong>。不采用「全球单一比率必然正确」的假设，可先用可披露的基准情景，并做敏感性区间。  </li>
-<li>( d )：折现率，<strong>待校准</strong>。  </li>
-<li>( T_b ) / ( K_b )：剩余经济寿命，<strong>待校准</strong>（会计年限只作参照）。  </li>
-<li>( TV )：期末残值，<strong>待校准</strong>；也可设为零并缩短寿命，但须在方法中固定并公开。</li>
+<li>( r_{b,t,k} ): expected realizable rent in period ( k ) (USD/GPU-hour), from the public rental panel, stratified by source type. The forward shape is <strong>to-be-calibrated</strong> (a term structure, or a decay applied to observed rents, may be used, but other vendors' non-public parameters must not be copied before calibration).  </li>
+<li>( H_k ): hours in the period (calendar hours or rentable hours; definition <strong>to-be-calibrated</strong>).  </li>
+<li>( u_{b,t,k} ): utilization, <strong>to-be-calibrated</strong>. Must not be assumed to be 100%.  </li>
+<li>( c_{b,t,k} ): operating costs such as power, rack space and operations, <strong>to-be-calibrated</strong>. The assumption that "a single global ratio is necessarily right" is not adopted; a disclosable base scenario may be used first, together with sensitivity ranges.  </li>
+<li>( d ): discount rate, <strong>to-be-calibrated</strong>.  </li>
+<li>( T_b ) / ( K_b ): remaining economic life, <strong>to-be-calibrated</strong> (accounting lives are reference only).  </li>
+<li>( TV ): terminal value, <strong>to-be-calibrated</strong>; it may also be set to zero with a shorter life, but this must be fixed and disclosed in the methodology.</li>
 </ul>
-<p>收益法在 ComputeNAV 中的地位是 <strong>交叉验证与样本不足时的补充</strong>，不是官方 NAV 的主定义。若 ( I_{b,t} ) 与 ( M_{b,t} ) 的偏差超过阈值（阈值 <strong>待校准</strong>），发布时同时披露两者，并解释可能原因（例如新一代上市导致二手价滞后、或租金市场与二手市场流动性不同）。</p>
-<h3 id="53-cost-approach">5.3 成本法（Cost approach）— 锚点与上下限</h3>
+<p>In ComputeNAV the income approach serves as a <strong>cross-check and supplement when samples are insufficient</strong>, not as the primary definition of the official NAV. If the divergence between ( I_{b,t} ) and ( M_{b,t} ) exceeds a threshold (threshold <strong>to-be-calibrated</strong>), both are disclosed on publication together with possible reasons (e.g. a new generation launching so that used prices lag, or different liquidity in the rental and secondary markets).</p>
+<h3 id="53-cost-approach-anchor-and-bounds">5.3 Cost approach — anchor and bounds</h3>
 <p>[
 C_{b,t} = P^{new}_{m(b),t} \cdot D_m(a_b) \cdot \gamma^{cond}_b \cdot \gamma^{complete}_b
 ]</p>
 <ul>
-<li>( P^{new} )：同型号、同形态、同显存的新卡参考价。来源优先级 <strong>待校准</strong>；在美国渠道价补齐之前，可把单一经销商「New From」只当作情景锚，而不是官方 ( P^{new} )。  </li>
-<li>( D_m(a) )：机龄 ( a ) 的折旧函数，形式（直线、余额递减、或分段市场校准曲线）<strong>待校准</strong>。会计年限（例如某发行人 5 年或 6 年）只用于设定情景，不自动等于 ( D )。  </li>
-<li>( \gamma^{cond} )、( \gamma^{complete} )：成色与「是否缺模块/配套」调整，<strong>待校准</strong>。缺省不得偷偷设为 1 而不披露。</li>
+<li>( P^{new} ): new-card reference price for the same model, form factor and memory. Source priority <strong>to-be-calibrated</strong>; until US channel prices are available, a single dealer's "New From" price may only be used as a scenario anchor, not as the official ( P^{new} ).  </li>
+<li>( D_m(a) ): depreciation function of age ( a ); its form (straight-line, declining balance, or a piecewise market-calibrated curve) is <strong>to-be-calibrated</strong>. Accounting lives (e.g. one issuer's 5 or 6 years) are only used to set scenarios and do not automatically equal ( D ).  </li>
+<li>( \gamma^{cond} ), ( \gamma^{complete} ): adjustments for condition and for missing modules/accessories, <strong>to-be-calibrated</strong>. They must not silently default to 1 without disclosure.</li>
 </ul>
-<p>成本法主要用于给出合理区间、防止少数异常挂牌把指数拉飞，以及在市场法完全空窗时提供可解释的占位值（占位值必须带旗标）。</p>
-<h3 id="54">5.4 桶内合成</h3>
+<p>The cost approach is mainly used to give a reasonable range, to stop a few abnormal listings from pulling the index away, and to provide an explainable placeholder when the market approach is completely empty (placeholders must carry a flag).</p>
+<h3 id="54-combination-within-a-bucket">5.4 Combination within a bucket</h3>
 <p>[
 \mathrm{NAV}<em>{b,t} = w^M</em>{b,t} M_{b,t} + w^I_{b,t} I_{b,t} + w^C_{b,t} C_{b,t}
 ]</p>
-<p>约束：( w^M + w^I + w^C = 1 )，且在成交样本充足时 ( w^M ) 应显著大于另外两项。权重可以随样本量动态调整，调整公式 <strong>待校准</strong>。在成交为 0 的启动期，官方可以：</p>
+<p>Constraint: ( w^M + w^I + w^C = 1 ), and when transaction samples are sufficient ( w^M ) should be significantly larger than the other two. Weights may adjust dynamically with sample size; the adjustment formula is <strong>to-be-calibrated</strong>. During the launch period with zero transactions, the administrator may:</p>
 <ul>
-<li>只发布「指示性 NAV（indicative）」，或  </li>
-<li>发布三个分项值而不合成单点，或  </li>
-<li>合成单点但必须在页首声明「无成交、指示性」。</li>
+<li>publish only an "indicative NAV", or  </li>
+<li>publish the three component values without combining them into a single point, or  </li>
+<li>combine them into a single point but state "no transactions, indicative" at the top of the page.</li>
 </ul>
-<p>v0 建议在连续成交样本达到委员会设定的最低标准（<strong>待校准</strong>）之前，<strong>每日同时公布 M / I / C 三个分项</strong>，合成点位如发布则一律标记为 indicative。</p>
+<p>v0 suggests that until continuous transaction samples reach the minimum standard set by the committee (<strong>to-be-calibrated</strong>), <strong>all three components M / I / C are published daily</strong>, and any combined point that is published is always labelled indicative.</p>
 <hr />
-<h2 id="6-normalization">6. 标准化规则（Normalization）</h2>
-<p>每条原始观察至少映射到下列字段（缺失则显式记为 unknown，禁止回填臆测）：</p>
+<h2 id="6-normalization">6. Normalization</h2>
+<p>Each raw observation is mapped to at least the following fields (missing fields are explicitly recorded as unknown; speculative back-filling is forbidden):</p>
 <ol>
-<li><strong>型号与架构</strong>（H100 / A100，排除误匹配的配件、转接头、图片卡）。  </li>
-<li><strong>形态（form factor）</strong>：SXM / SXM5、PCIe、NVL；无法判断则单独分桶。  </li>
-<li><strong>显存</strong>：40 / 80 / 94（NVL）GB；来源冲突时以更细的字段（如 <code>gpu_ram</code>）为准。  </li>
-<li><strong>条件</strong>：new / refurbished / used-tested / used-unspecified / for-parts。  </li>
-<li><strong>成交 vs 挂牌 vs 价目 vs 参考</strong>。  </li>
-<li><strong>时间</strong>：成交日或抓取日，时区统一记录为 UTC，对外报告同时给 PT。  </li>
-<li><strong>币种、是否含增值税、是否含运费/关税、是否可执行</strong>。  </li>
-<li><strong>单位</strong>：单卡、多卡、整机、整节点。  </li>
-<li><strong>机龄或投入使用年份</strong>（若有）；功率小时、Burn-in 报告（若有）。</li>
+<li><strong>Model and architecture</strong> (H100 / A100, excluding mismatched accessories, adapters and picture-only listings).  </li>
+<li><strong>Form factor</strong>: SXM / SXM5, PCIe, NVL; if undeterminable, a separate bucket.  </li>
+<li><strong>Memory</strong>: 40 / 80 / 94 (NVL) GB; when sources conflict, the finer-grained field (e.g. <code>gpu_ram</code>) prevails.  </li>
+<li><strong>Condition</strong>: new / refurbished / used-tested / used-unspecified / for-parts.  </li>
+<li><strong>Sold vs listed vs price list vs reference</strong>.  </li>
+<li><strong>Time</strong>: transaction date or fetch date, recorded in UTC; external reports also give PT.  </li>
+<li><strong>Currency, whether VAT is included, whether shipping/duties are included, whether executable</strong>.  </li>
+<li><strong>Unit</strong>: single card, multiple cards, full system, full node.  </li>
+<li><strong>Age or year placed in service</strong> (if available); power-on hours, burn-in report (if available).</li>
 </ol>
-<p><strong>整机拆单卡：</strong></p>
+<p><strong>Splitting a system into cards:</strong></p>
 <p>[
 p^{card}<em>{i,t} = \frac{P^{system}</em>{i,t} - \widehat{V}^{host}_{i,t}}{N^{gpu}_i}
 ]</p>
-<p>主机部分（CPU、内存、盘、网卡、机箱、电源、质保剩余价值）的估计方法 <strong>待校准</strong>。在校准完成前，整机观察可以进入「整机桶」或只作为附录，<strong>不得用「总价/卡数」直接写入官方单卡 NAV</strong>。本节的 ServerPartsDeals 与 Creative Compute / Genius HPC 整机样本，正是需要这套扣减的原因。</p>
-<p><strong>租金标准化：</strong> 统一为 USD per GPU-hour；8 卡节点价格除以 8；写明 on-demand / reserved / spot / community / secure；预留期限不得与按需价格无调整地混合。</p>
-<p><strong>重复与异常单位：</strong> 同一商家同一 SKU 的重复抓取去重；明显的配件、软件许可、租赁押金、与标题不符的价格，标为 reject 并保留在原始库。</p>
+<p>The method for estimating the host portion (CPU, memory, drives, NICs, chassis, power supplies, remaining warranty value) is <strong>to-be-calibrated</strong>. Until calibrated, system observations may go into a "system bucket" or an appendix only; <strong>"total price / number of cards" must not be written directly into the official per-card NAV</strong>. The ServerPartsDeals and Creative Compute / Genius HPC system samples in this document are exactly why this deduction is needed.</p>
+<p><strong>Rent normalization:</strong> Always USD per GPU-hour; 8-card node prices divided by 8; state on-demand / reserved / spot / community / secure; reserved terms must not be mixed with on-demand prices without adjustment.</p>
+<p><strong>Duplicates and abnormal units:</strong> Repeated fetches of the same SKU from the same merchant are de-duplicated; obvious accessories, software licences, rental deposits and prices inconsistent with the title are marked reject and kept in the raw store.</p>
 <hr />
-<h2 id="7-outlier-rules">7. 极值处理（Outlier rules）</h2>
-<p>规则 <strong>待校准</strong>。v0 意向（尚未冻结）如下，实施前须由指数委员会书面确认：</p>
+<h2 id="7-outlier-rules">7. Outlier rules</h2>
+<p>Rules are <strong>to-be-calibrated</strong>. The v0 intent (not yet frozen) is as follows and must be confirmed in writing by the index committee before implementation:</p>
 <ul>
-<li>在每个桶的滚动窗口内，对对数价格做稳健离散度估计（例如四分位距或中位数绝对偏差）。  </li>
-<li>超出中位数 ± ( k ) 倍离散度的观察降权或剔除，( k ) <strong>待校准</strong>。  </li>
-<li>剔除或降权必须可逆：原始点仍存档，重算时可复原。  </li>
-<li>不得因为「看起来太便宜或太贵」而手工删点；人工判断如使用，须按第 12 节记录专家判断。  </li>
-<li>跨来源的结构性差异（例如欧洲未税经销商价 vs 美国含平台费要价）应先标准化，再判断是否为极值，避免把口径差当成异常值。</li>
+<li>Within each bucket's rolling window, estimate robust dispersion of log prices (e.g. interquartile range or median absolute deviation).  </li>
+<li>Observations beyond the median ± ( k ) times the dispersion are down-weighted or removed; ( k ) is <strong>to-be-calibrated</strong>.  </li>
+<li>Removal or down-weighting must be reversible: raw points remain archived and can be restored on recomputation.  </li>
+<li>Points must not be deleted by hand because they "look too cheap or too expensive"; if human judgement is used it must be recorded as expert judgement per Section 10.  </li>
+<li>Structural differences across sources (e.g. European ex-VAT dealer prices vs US asks including platform fees) should be normalized first before judging outliers, so that basis differences are not mistaken for anomalies.</li>
 </ul>
 <hr />
-<h2 id="8">8. 综合指数、残值曲线与急售地板价</h2>
-<h3 id="81-composite">8.1 综合指数（Composite）</h3>
+<h2 id="8-composite-index-residual-value-curve-and-quick-sale-floor">8. Composite index, residual value curve and quick-sale floor</h2>
+<h3 id="81-composite-index">8.1 Composite index</h3>
 <p>[
 \mathrm{NAV}^{comp}<em>t = \sum</em>{b \in \mathcal{B}<em>0} s</em>{b,t}\, \mathrm{NAV}_{b,t}
 ]</p>
-<p>(\mathcal{B}<em>0) 为 v0 纳入综合的桶（H100 SXM/PCIe 与 A100 40G/80G 的官方定义桶，具体名单 <strong>待校准</strong>）。( s</em>{b,t} ) 为在役装机量或可公开的代理权数，来源与更新频率 <strong>待校准</strong>。权数未就绪时，不发布综合点位，只发布子指数。</p>
-<h3 id="82-residual-value-curve">8.2 残值曲线（Residual value curve）</h3>
-<p>对每个型号 ( m )，把各机龄桶的 (\mathrm{NAV}_{m,a,t}) 连成曲线，并可同时发布相对新卡价的比值：</p>
+<p>(\mathcal{B}<em>0) is the set of buckets included in the v0 composite (the officially defined H100 SXM/PCIe and A100 40G/80G buckets; exact list <strong>to-be-calibrated</strong>). ( s</em>{b,t} ) is the in-service installed base or a publicly available proxy weight; source and update frequency <strong>to-be-calibrated</strong>. Until the weights are ready, no composite level is published, only sub-indices.</p>
+<h3 id="82-residual-value-curve">8.2 Residual value curve</h3>
+<p>For each model ( m ), the (\mathrm{NAV}_{m,a,t}) values of the age buckets are joined into a curve, and the ratio to the new-card price may be published alongside:</p>
 <p>[
 R_{m}(a,t) = \frac{\mathrm{NAV}<em>{m,a,t}}{P^{new}</em>{m,t}}
 ]</p>
-<p>机龄未知的观察不进入曲线点，只进入「未知机龄」附注。曲线在样本不足时应以区间或不连续点表示，禁止用平滑函数填出虚假的精度。</p>
-<h3 id="83-90-quick-sale-floor">8.3 90 天快速变现地板价（Quick-sale floor）</h3>
-<p>为对应「必须在约 90 天内变现」的清算情景，定义：</p>
+<p>Observations of unknown age do not enter curve points and only appear in an "unknown age" note. When samples are insufficient the curve should be shown as ranges or discontinuous points; smoothing functions must not be used to fill in false precision.</p>
+<h3 id="83-90-day-quick-sale-floor">8.3 90-day quick-sale floor</h3>
+<p>For the liquidation scenario of "must be realized within about 90 days", define:</p>
 <p>[
 F_{b,t} = q_{b,t} \cdot \mathrm{NAV}_{b,t}
 ]</p>
-<p>折扣因子 ( q ) <strong>待校准</strong>（可以按型号流动性、近期成交与挂牌的价差、或观测到的急售成交来估计）。在校准前，可以不发布单一地板点位，而只发布方法说明。不得把一个未经实证的整数百分比写成官方地板。</p>
+<p>The discount factor ( q ) is <strong>to-be-calibrated</strong> (it can be estimated from model liquidity, the recent spread between transactions and listings, or observed quick-sale transactions). Before calibration, a single floor point may be withheld and only the method described. An empirically unsupported round percentage must not be written in as the official floor.</p>
 <hr />
-<h2 id="9-data-integrity-audit-trail">9. 数据完整性与审计轨迹（Data integrity / audit trail）</h2>
-<p>每日流水线分为互不覆盖的两段：</p>
+<h2 id="9-data-integrity-audit-trail">9. Data integrity / audit trail</h2>
+<p>The daily pipeline has two non-overlapping stages:</p>
 <ol>
-<li><strong>采集（ingest）。</strong> 对每个已授权来源：保存原始响应字节（或经许可的 API payload）、最终 URL、HTTP 状态、采集时间（UTC）、请求头中非密钥部分、以及原始字节的 <strong>SHA-256</strong>。网页改版后，旧快照仍保留。  </li>
-<li><strong>解析与计算（parse / calculate）。</strong> 解析器版本号写入每条标准化记录。计算方法或解析规则变更后，必须用历史快照 <strong>重算受影响的全部序列</strong>，并在变更日志中同时公布旧值、新值与原因。</li>
+<li><strong>Ingest.</strong> For each authorized source: save the raw response bytes (or the licensed API payload), final URL, HTTP status, fetch time (UTC), non-secret request headers, and the <strong>SHA-256</strong> of the raw bytes. Old snapshots are kept after website redesigns.  </li>
+<li><strong>Parse / calculate.</strong> The parser version is written into every normalized record. After a change to the calculation method or parsing rules, <strong>all affected series must be recomputed</strong> from historical snapshots, and the change log must publish old values, new values and the reason.</li>
 </ol>
-<p>任何一日的官方 NAV，应能追溯到：(a) 进入计算的标准化观察列表及其权重；(b) 对应的原始快照哈希；(c) 当时生效的方法论版本。指数管理人不修改已归档的原始快照。若来源事后删页，仍以已归档快照为准，并注明「来源页可能已变更」。</p>
-<p>v0 代码与档案的目标存放位置为指数管理人控制的存储（本次调研文件保存在项目私有存储中）。生产环境的保留期限建议不少于 <strong>七年</strong>（与常见基准治理实践及部分发行人治理文件中的记录保存期对齐），最终期限 <strong>待委员会确认</strong>。</p>
+<p>Any day's official NAV should be traceable to: (a) the list of normalized observations that entered the calculation and their weights; (b) the hashes of the corresponding raw snapshots; (c) the methodology version in force at the time. The index administrator does not modify archived raw snapshots. If a source later deletes a page, the archived snapshot still prevails, with a note that "the source page may have changed".</p>
+<p>The target location for v0 code and archives is storage controlled by the index administrator (the survey files for this round are kept in the project's private storage). A production retention period of no less than <strong>seven years</strong> is suggested (aligned with common benchmark governance practice and record-keeping periods in some issuers' governance documents); the final period is <strong>to be confirmed by the committee</strong>.</p>
 <hr />
-<h2 id="10-governance">10. 治理（Governance）</h2>
-<p>ComputeNAV 的治理目标是 <strong>对齐</strong> IOSCO《金融基准原则》（Principles for Financial Benchmarks）中与本项目相关的要求，尤其是：基准设计的清晰性、数据充足性与优先级、透明度、利益冲突隔离、变更与停用、问责与投诉。本文件的对齐是 <strong>自律声明</strong>，并不表示已经完成外部认证，或已经成为受监管的基准管理人。</p>
-<p><strong>拟议结构（人员与章程待设立）：</strong></p>
+<h2 id="10-governance">10. Governance</h2>
+<p>ComputeNAV's governance aims to <strong>align with</strong> the requirements of the IOSCO Principles for Financial Benchmarks that are relevant to this project, in particular: clarity of benchmark design, data sufficiency and hierarchy, transparency, separation of conflicts of interest, change and cessation, accountability and complaints. This alignment is a <strong>self-declaration</strong>; it does not mean external certification has been completed or that the project is a regulated benchmark administrator.</p>
+<p><strong>Proposed structure (people and charter to be established):</strong></p>
 <ul>
-<li><strong>指数委员会（Index Committee）：</strong> 负责方法论批准、参数校准、例外处理、来源准入与退出、质量旗标政策。会议应有书面纪要。  </li>
-<li><strong>作业与技术职能：</strong> 负责采集、解析、计算、发布，与委员会分离。  </li>
-<li><strong>利益冲突：</strong> 指数管理人不交易标的资产、不开展 ComputeNAV 衍生品做市、不承保残值、不发放以本指数定价的贷款。如将来存在关联数据许可或分发协议，须公开披露。  </li>
-<li><strong>方法论变更：</strong> 例行参数再校准与结构性修订应区分。结构性修订应提前公告（提前量 <strong>待校准</strong>），并尽量提供平行试运行。紧急修复（明显差错）可先修正后公告，但必须保留审计轨迹。  </li>
-<li><strong>专家判断：</strong> 仅在数据缺失、来源中断或明显的不可自动处理的分类问题时使用，每次判断记录理由、人员与时间，并尽量给出对指数的影响估计。  </li>
-<li><strong>投诉与更正：</strong> 应提供公开联系渠道；经查实的计算错误应更正历史值并公告。</li>
+<li><strong>Index Committee:</strong> Responsible for methodology approval, parameter calibration, exception handling, source admission and exit, and quality-flag policy. Meetings should have written minutes.  </li>
+<li><strong>Operations and technology function:</strong> Responsible for collection, parsing, calculation and publication; separate from the committee.  </li>
+<li><strong>Conflicts of interest:</strong> The index administrator does not trade the underlying assets, make markets in ComputeNAV derivatives, underwrite residual value, or make loans priced off this index. Any future related data-licensing or distribution agreements must be publicly disclosed.  </li>
+<li><strong>Methodology changes:</strong> Routine parameter recalibration should be distinguished from structural revisions. Structural revisions should be announced in advance (lead time <strong>to-be-calibrated</strong>) and, where possible, run in parallel first. Emergency fixes (obvious errors) may be corrected first and announced afterwards, but the audit trail must be kept.  </li>
+<li><strong>Expert judgement:</strong> Used only for missing data, source outages, or classification problems that clearly cannot be handled automatically; each judgement records the reason, person and time, and where possible an estimate of its impact on the index.  </li>
+<li><strong>Complaints and corrections:</strong> A public contact channel should be provided; verified calculation errors should be corrected in the historical values and announced.</li>
 </ul>
-<p>来源准入标准（<strong>待细化</strong>）：可合法获取、可归档、字段足以完成标准化、持续可用性可接受、许可允许用于基准。Vast.ai 公共 feed 已写明指数用途需要单独许可——在许可完成前，该 feed 不得进入官方计算，只能用于研究对照。</p>
+<p>Source admission criteria (<strong>to be refined</strong>): legally obtainable, archivable, fields sufficient for normalization, acceptable ongoing availability, and a licence that permits benchmark use. The Vast.ai public feed states that index use requires a separate licence — until that licence is obtained, the feed must not enter the official calculation and may only be used as a research comparison.</p>
 <hr />
-<h2 id="11-known-limitations">11. 已知局限（Known limitations）</h2>
+<h2 id="11-known-limitations">11. Known limitations</h2>
 <ol>
-<li><strong>成交磁带几乎是空的。</strong> 2026-11-16 的公开 HTTP 测试没有抓到任何一笔 H100/A100 已售成交。在这一点改变之前，任何单点 NAV 都只能是指示性的。  </li>
-<li><strong>挂牌高度离散且口径不一。</strong> 同日不同来源的 H100 挂牌可相差数倍；部分不可执行，部分未税，部分是整机。  </li>
-<li><strong>机龄与使用强度普遍缺失。</strong> 没有机龄就做不成可靠的残值曲线。  </li>
-<li><strong>访问限制。</strong> eBay、主要拍卖行、部分经销商对无密钥 HTTP 返回 403/405；不得通过验证码绕过或违规抓取来「补厚」样本。  </li>
-<li><strong>许可限制。</strong> 至少 Vast.ai 已明确限制将公共定价 feed 用于指数/基准；其他来源的系统化采集也须逐家确认。  </li>
-<li><strong>美国新卡参考价今日缺失。</strong> 成本法的 ( P^{new} ) 尚未有合格的美国渠道锚。  </li>
-<li><strong>租金是要价/价目，不是全部已执行合约。</strong> 用其做 DCF 会继承利用率、运维与折现假设的模型风险。这也是本指数不把收益法当作主定义的原因。  </li>
-<li><strong>装机量权数未定。</strong> 综合指数暂不可用。  </li>
-<li><strong>地域、税收、运费、质保</strong> 会实质影响可变现价值，v0 只能做到标注，还不能做完整的净实得价调整。  </li>
-<li><strong>本指数尚未经过任何监管认定</strong>，也不得表述为 CFTC 或 SEC 已批准的基准。</li>
+<li><strong>The transaction tape is almost empty.</strong> Public HTTP tests on 2026-11-16 did not capture a single sold H100/A100 transaction. Until this changes, any single-point NAV can only be indicative.  </li>
+<li><strong>Listings are highly dispersed and on inconsistent bases.</strong> H100 listings from different sources on the same day can differ several-fold; some are non-executable, some ex-VAT, some full systems.  </li>
+<li><strong>Age and usage intensity are generally missing.</strong> Without age, a reliable residual curve cannot be built.  </li>
+<li><strong>Access restrictions.</strong> eBay, major auction houses and some dealers return 403/405 to keyless HTTP; samples must not be "thickened" by captcha circumvention or non-compliant scraping.  </li>
+<li><strong>Licence restrictions.</strong> At least Vast.ai explicitly restricts use of its public pricing feed in indices/benchmarks; systematic collection from other sources must also be confirmed source by source.  </li>
+<li><strong>No US new-card reference price today.</strong> The cost approach's ( P^{new} ) does not yet have a qualified US channel anchor.  </li>
+<li><strong>Rents are asks / list prices, not all executed contracts.</strong> Using them in a DCF inherits model risk from utilization, operations and discount assumptions. This is also why this index does not treat the income approach as its primary definition.  </li>
+<li><strong>Installed-base weights are not set.</strong> The composite is not yet available.  </li>
+<li><strong>Geography, tax, shipping and warranty</strong> materially affect realizable value; v0 can only label them and cannot yet make full net-proceeds adjustments.  </li>
+<li><strong>This index has not been recognized by any regulator</strong>, and must not be described as a benchmark approved by the CFTC or SEC.</li>
 </ol>
 <hr />
-<h2 id="12-v0-6090">12. v0 路线图（60–90 天）</h2>
-<p>目标与 Silicon Data 起步顺序相同：<strong>先让机器每天收价、洗价、存档，跑出可核验的历史，再谈分发与合约。</strong></p>
+<h2 id="12-v0-roadmap-6090-days">12. v0 roadmap (60–90 days)</h2>
+<p>The goal follows the same starting sequence as Silicon Data: <strong>first get the machine collecting, cleaning and archiving prices every day and build a verifiable history, then talk about distribution and contracts.</strong></p>
 <table>
 <thead>
 <tr>
-<th>阶段</th>
-<th>大致时间</th>
-<th>内容</th>
+<th>Phase</th>
+<th>Approx. timing</th>
+<th>Content</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td>第 1–2 周</td>
-<td>采集机上线</td>
-<td>在已确认许可的来源上做每日快照（经销商目录、已许可的租金 API、EDGAR 定期检索）。完成来源登记与哈希归档。启动 eBay / 拍卖数据的 <strong>正规授权</strong> 申请，不进行规避式抓取。联系 Vast.ai 等所需的数据许可。</td>
+<td>Weeks 1–2</td>
+<td>Collector goes live</td>
+<td>Daily snapshots of sources with confirmed licences (dealer catalogs, licensed rental APIs, periodic EDGAR searches). Complete the source register and hash archiving. Start <strong>formal authorization</strong> requests for eBay / auction data; no circumvention scraping. Contact Vast.ai and others for the required data licences.</td>
 </tr>
 <tr>
-<td>第 3–6 周</td>
-<td>标准化与试算</td>
-<td>上线解析器、整机拆分的试验规则（参数仍为试运行）、三法并列表、质量旗标。每日输出分项值，不急于把合成点位当作官方。补美国新卡参考价。开始记录「机龄缺失率」等数据质量指标。</td>
+<td>Weeks 3–6</td>
+<td>Normalization and trial calculation</td>
+<td>Launch parsers, trial rules for splitting systems (parameters still in trial), the three-approach side-by-side table, and quality flags. Output component values daily without rushing to treat a combined point as official. Add US new-card reference prices. Start tracking data-quality metrics such as the "missing-age rate".</td>
 </tr>
 <tr>
-<td>第 7–12 周</td>
-<td>积累历史</td>
-<td>连续运行至满 60 天，力争 90 天。期间禁止为了「看起来完整」而回填未采集日期。委员会冻结第一版权重与极值规则的候选方案，做平行试算。若成交样本仍极薄，保持 indicative 状态，并公开说明。</td>
+<td>Weeks 7–12</td>
+<td>Build history</td>
+<td>Run continuously to a full 60 days, aiming for 90. During this period, back-filling uncollected dates to "look complete" is forbidden. The committee freezes candidate first-version weights and outlier rules and runs parallel trial calculations. If transaction samples are still very thin, keep the indicative status and say so publicly.</td>
 </tr>
 <tr>
-<td>60–90 天后</td>
-<td>评估是否进入 v1</td>
-<td>只有在以下条件满足时，才考虑把某一子集升格为正式指数：方法论已被委员会批准；审计轨迹完整；关键来源许可到位；质量旗标定义稳定；并对局限性保持公开。</td>
+<td>After 60–90 days</td>
+<td>Assess moving to v1</td>
+<td>Promoting a subset to an official index is considered only when: the methodology has been approved by the committee; the audit trail is complete; key source licences are in place; quality-flag definitions are stable; and limitations remain publicly disclosed.</td>
 </tr>
 </tbody>
 </table>
 <hr />
-<h2 id="13">13. 待校准参数清单（不得用本文填入数值）</h2>
+<h2 id="13-parameters-to-be-calibrated-this-document-must-not-be-used-to-fill-in-values">13. Parameters to be calibrated (this document must not be used to fill in values)</h2>
 <ul>
-<li>成交 vs 挂牌的相对权重 ( w^{sold}, w^{list} )  </li>
-<li>三法合成权重及随样本量变化的规则  </li>
-<li>滚动窗口长度、极值倍数 ( k )、最低样本量  </li>
-<li>收益法：租金期限结构、利用率路径、运营成本、折现率、剩余寿命、期末残值  </li>
-<li>成本法：官方新卡价来源、折旧函数形态、成色系数  </li>
-<li>整机主机部分估价方法  </li>
-<li>装机量权数来源  </li>
-<li>90 天急售折扣 ( q )  </li>
-<li>方法变更的提前公告期、记录保存年限  </li>
-<li>NVL 是否纳入 H100 子指数、综合指数的官方桶名单  </li>
+<li>Relative weights of sold vs listed ( w^{sold}, w^{list} )  </li>
+<li>Weights for combining the three approaches and rules for varying them with sample size  </li>
+<li>Rolling window length, outlier multiple ( k ), minimum sample size  </li>
+<li>Income approach: rent term structure, utilization path, operating costs, discount rate, remaining life, terminal value  </li>
+<li>Cost approach: official new-card price source, form of the depreciation function, condition factors  </li>
+<li>Method for valuing the host portion of systems  </li>
+<li>Source of installed-base weights  </li>
+<li>90-day quick-sale discount ( q )  </li>
+<li>Advance notice period for methodology changes, record retention period  </li>
+<li>Whether NVL is included in the H100 sub-index; official bucket list for the composite  </li>
 </ul>
 <hr />
-<h2 id="14">14. 附录：调研档案位置</h2>
+<h2 id="14-appendix-location-of-survey-archives">14. Appendix: location of survey archives</h2>
 <ul>
-<li>来源登记、当日价格样本、原始响应（含哈希计算所需字节）：项目私有存储，<strong>不随公开仓库发布</strong>（部分来源条款不允许再分发）。  </li>
-<li>每日管道代码：<code>pipeline/run_daily.py</code>；公开汇总导出：<code>pipeline/export_public.py</code>。  </li>
-<li>本方法论：<code>docs/methodology.md</code>。  </li>
+<li>Source register, the day's price samples, raw responses (including the bytes needed for hash verification): project private storage, <strong>not published with the public repository</strong> (some sources' terms do not allow redistribution).  </li>
+<li>Daily pipeline code: <code>pipeline/run_daily.py</code>; public aggregate export: <code>pipeline/export_public.py</code>.  </li>
+<li>This methodology: <code>docs/methodology.md</code>.  </li>
 </ul>
-<p>本文不含对未来点位的预测，也不构成投资、信贷或估值意见。</p>
+<p>This document contains no forecast of future index levels and does not constitute investment, credit or valuation advice.</p>
 </main></body></html>

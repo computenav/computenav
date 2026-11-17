@@ -6,6 +6,7 @@
   var DASH = "\u2014";
   var TZ = "America/Los_Angeles";
   var MODEL_KEYS = ["H100_SXM", "H100_PCIe", "A100_80GB", "A100_40GB"];
+  var LEG_NAMES = { market: "market", income: "income", cost: "cost" };
   var COLORS = { COMPOSITE: "#1d2330", H100_SXM: "#2f5bd3", H100_PCIe: "#0f9d8a", A100_80GB: "#d97706", A100_40GB: "#b42318" };
 
   function isNum(v) { return typeof v === "number" && isFinite(v); }
@@ -33,6 +34,8 @@
     return p.year + "-" + p.month + "-" + p.day + " " + hh + ":" + p.minute + ":" + p.second + " " + (p.timeZoneName || "PT") + " (America/Los_Angeles)";
   }
   function $(id) { return document.getElementById(id); }
+  function hiddenHTML() { return "Hidden"; }
+  function smallHTML(n) { return "<span class='skip'>Insufficient sample (n=" + int(n) + ")</span>"; }
 
   function getJSON(url) {
     return fetch(url + "?v=" + Date.now(), { cache: "no-store" }).then(function (r) {
@@ -47,15 +50,16 @@
     var skipped = h.filter(function (s) { return s.skipped; }).length;
     var failed = h.length - ok - skipped;
     var fx = L.fx || {};
+    var oc = L.official_observation_counts;
     var items = [
-      ["最近更新（PT） / Last updated (PT)", fmtPT(L.computed_at_pt)],
-      ["指数日（PT） / As-of date (PT)", esc(L.asof_date_pt || DASH)],
-      ["运行编号 / Run ID", esc(L.run_id || DASH)],
-      ["今日成交样本 / Sold transactions today", int(L.sold_count_today)],
-      ["汇率 / FX", "1 EUR = " + usd(fx.usd_per_eur, 4) + "; 1 GBP = " + usd(fx.usd_per_gbp, 4) + "<br><span class='en'>as of " + fmtPT(fx.asof_utc) + "</span>"],
-      ["源健康 / Sources", ok + " 成功 ok / " + failed + " 失败 failed / " + skipped + " 跳过 skipped"],
-      ["当日观测 / Observations (not published)", int(L.observation_count) + (L.official_observation_counts ?
-        "<br><span class='en'>官方口径 official: 市场 market " + int(L.official_observation_counts.market) + " · 收益 income " + int(L.official_observation_counts.income) + " · 成本 cost " + int(L.official_observation_counts.cost_new) + "</span>" : "")]
+      ["Last updated (PT)", fmtPT(L.computed_at_pt)],
+      ["As-of date (PT)", esc(L.asof_date_pt || DASH)],
+      ["Run ID", esc(L.run_id || DASH)],
+      ["Sold transactions today", int(L.sold_count_today)],
+      ["FX", "1 EUR = " + usd(fx.usd_per_eur, 4) + "; 1 GBP = " + usd(fx.usd_per_gbp, 4) + "<br><span class='en'>as of " + fmtPT(fx.asof_utc) + "</span>"],
+      ["Sources", ok + " ok / " + failed + " failed / " + skipped + " skipped"],
+      ["Observations (not published)", int(L.observation_count) + (oc ?
+        "<br><span class='en'>used officially: market " + int(oc.market) + " · income " + int(oc.income) + " · cost " + int(oc.cost_new) + "</span>" : "")]
     ];
     $("props").innerHTML = items.map(function (it) {
       return "<div><dt>" + it[0] + "</dt><dd>" + it[1] + "</dd></div>";
@@ -65,29 +69,28 @@
   function renderMetrics(L) {
     var c = L.composite || {};
     var cHidden = !!c.nav_hidden;
-    var html = "<div class='metric primary" + (cHidden ? " warn" : "") + "'><div class='v'>" + (cHidden ? "已隐藏 <small>hidden</small>" : usd(c.nav_indicative_usd)) +
-      "</div><div class='l'>" + esc(c.label || "综合") +
-      "</div><div class='d'>" + (cHidden && c.nav_hidden_reason ? esc(c.nav_hidden_reason.zh) + "<br><span class='en'>" + esc(c.nav_hidden_reason.en) + "</span><br>" : "") +
-      "四只子指数等权平均（" + int(c.n_models) + " 个型号有值），装机量权数待校准<br><span class='en'>" + esc(c.label_en || "") + "</span></div></div>";
+    var html = "<div class='metric primary" + (cHidden ? " warn" : "") + "'><div class='v'>" + (cHidden ? hiddenHTML() : usd(c.nav_indicative_usd)) +
+      "</div><div class='l'>" + esc(c.label || "Composite") + "</div><div class='d'>" +
+      (cHidden && c.nav_hidden_reason ? esc(c.nav_hidden_reason) + "<br>" : "") +
+      "Equal-weight mean of the sub-indices (" + int(c.n_models) + " models with a value); installed-base weights to be calibrated</div></div>";
     MODEL_KEYS.forEach(function (k) {
       var m = (L.models || {})[k];
-      if (!m) { html += "<div class='metric warn'><div class='v'>" + DASH + "</div><div class='l'>" + k + "</div><div class='d'>当日无数据 / no data</div></div>"; return; }
+      if (!m) { html += "<div class='metric warn'><div class='v'>" + DASH + "</div><div class='l'>" + k + "</div><div class='d'>No data</div></div>"; return; }
       var ins = m.insufficient_sample || {};
       var legNames = [], small = [];
-      [["market", "市场 market"], ["income", "收益 income"], ["cost", "成本 cost"]].forEach(function (lg) {
-        var n = m[lg[0] + "_n"];
-        if (isNum(n) && n > 0) legNames.push(lg[1]);
-        if (ins[lg[0]]) small.push(lg[1] + " n=" + n);
+      ["market", "income", "cost"].forEach(function (lg) {
+        var n = m[lg + "_n"];
+        if (isNum(n) && n > 0) legNames.push(LEG_NAMES[lg]);
+        if (ins[lg]) small.push(LEG_NAMES[lg] + " n=" + n);
       });
       var partial = legNames.length < 3;
-      var detail = partial ? ("仅 " + (legNames.join(" + ") || DASH) + "，不可直接横向比较 · only " + legNames.length + " of 3 methods")
-                           : "市场/收益/成本三法等权 · 3 methods equal-weight";
-      if (small.length) detail += "<br>样本不足未公开 / not published (n&lt;3): " + esc(small.join(", "));
+      var detail = partial ? ("Only " + (legNames.join(" + ") || DASH) + " (" + legNames.length + " of 3 methods); not directly comparable")
+                           : "Market / income / cost, equal-weight";
+      if (small.length) detail += "<br>Not published (n&lt;3): " + esc(small.join(", "));
       var hidden = !!m.nav_hidden;
-      var val = hidden ? "已隐藏 <small>hidden</small>" : usd(m.nav_indicative_usd);
-      if (hidden && m.nav_hidden_reason) detail = esc(m.nav_hidden_reason.zh) + "<br><span class='en'>" + esc(m.nav_hidden_reason.en) + "</span><br>" + detail;
-      html += "<div class='metric" + (partial || hidden ? " warn" : "") + "'><div class='v'>" + val + "</div><div class='l'>" +
-        esc(m.label) + "</div><div class='d'>" + detail + "</div></div>";
+      if (hidden && m.nav_hidden_reason) detail = esc(m.nav_hidden_reason) + "<br>" + detail;
+      html += "<div class='metric" + (partial || hidden ? " warn" : "") + "'><div class='v'>" + (hidden ? hiddenHTML() : usd(m.nav_indicative_usd)) +
+        "</div><div class='l'>" + esc(m.label) + "</div><div class='d'>" + detail + "</div></div>";
     });
     $("metrics").innerHTML = html;
   }
@@ -95,25 +98,24 @@
   function qualityText(q) {
     if (!q) return DASH;
     var map = {
-      "sold_n=0": "成交 n=0",
-      "no_official_listings": "无官方挂牌",
-      "no_official_rentals": "无官方租金",
-      "no_new_card_anchor": "无新卡锚点",
-      "income_assumptions=to-be-calibrated": "收益法参数待校准",
-      "cost_age_fraction=to-be-calibrated": "成本法残值系数待校准"
+      "sold_n=0": "no sold transactions",
+      "no_official_listings": "no official listings",
+      "no_official_rentals": "no official rents",
+      "no_new_card_anchor": "no new-card anchor",
+      "income_assumptions=to-be-calibrated": "income parameters to be calibrated",
+      "cost_age_fraction=to-be-calibrated": "cost remaining-value factor to be calibrated"
     };
-    return q.split(";").map(function (t) { return map[t] || t; }).join("；");
+    return q.split(";").map(function (t) { return map[t] || t; }).join("; ");
   }
 
   function renderBreakdown(L) {
-    var head = ["型号<br>Model", "指示性 NAV<br>Indicative", "市场法<br>Market", "n", "收益法<br>Income", "租金中位数<br>Rent median /GPU-hr", "n", "成本法<br>Cost", "新卡锚点<br>New-card anchor", "n", "质量标记<br>Quality flags"];
+    var head = ["Model", "Indicative NAV", "Market", "n", "Income", "Rent median /GPU-hr", "n", "Cost", "New-card anchor", "n", "Quality flags"];
     var num = [false, true, true, true, true, true, true, true, true, true, false];
     var rows = MODEL_KEYS.map(function (k) {
       var m = (L.models || {})[k] || {};
       var ins = m.insufficient_sample || {};
-      function small(leg) { return "<span class='skip'>样本不足 (n=" + int(m[leg + "_n"]) + ")</span>"; }
-      function leg(name, v, d) { return ins[name] ? small(name) : usd(v, d); }
-      return [esc(m.label || k), m.nav_hidden ? "<span class='skip'>已隐藏 hidden</span>" : usd(m.nav_indicative_usd),
+      function leg(name, v, d) { return ins[name] ? smallHTML(m[name + "_n"]) : usd(v, d); }
+      return [esc(m.label || k), m.nav_hidden ? "<span class='skip'>Hidden</span>" : usd(m.nav_indicative_usd),
         leg("market", m.market_usd), int(m.market_n), leg("income", m.income_usd),
         leg("income", m.rental_median_usd_per_hour, 4), int(m.income_n),
         leg("cost", m.cost_usd), leg("cost", m.new_card_usd), int(m.cost_n), esc(qualityText(m.quality_flag))];
@@ -127,7 +129,7 @@
   function renderSmallSampleNote(L) {
     var r = L.small_sample_rule;
     if (!r) return;
-    $("small-sample").innerHTML = "样本量规则 / small-sample rule (n&lt;" + int(r.min_n) + "): " + esc(r.zh) + " <span class='en'>" + esc(r.en) + "</span>";
+    $("small-sample").innerHTML = "Small-sample rule (n&lt;" + int(r.min_n) + "): " + esc(r.text);
   }
 
   function renderChart(H) {
@@ -141,7 +143,7 @@
     });
     var all = [];
     series.forEach(function (s) { s.values.forEach(function (v) { if (isNum(v)) all.push(v); }); });
-    if (!dates.length || !all.length) { $("chart").innerHTML = "<p class='note'>暂无历史数据 / no history yet</p>"; return; }
+    if (!dates.length || !all.length) { $("chart").innerHTML = "<p class='note'>No history yet</p>"; return; }
     var W = 1100, Hh = 340, pl = 70, pr = 20, pt = 16, pb = 40;
     var max = Math.ceil(Math.max.apply(null, all) / 5000) * 5000 || 5000;
     var min = 0;
@@ -176,35 +178,36 @@
     $("legend").innerHTML = series.map(function (s) {
       var last = null;
       for (var i = s.values.length - 1; i >= 0; i--) if (isNum(s.values[i])) { last = s.values[i]; break; }
-      return "<span style='--c:" + (COLORS[s.key] || "#888") + "'>" + esc(s.label) + "（最新 " + usd(last) + "）</span>";
-    }).join("") + "<span class='note' style='--c:transparent'>" + dates.length + " 个交易日 / days · 缺值或已隐藏的点不插补 / missing or hidden points are not interpolated</span>";
+      return "<span style='--c:" + (COLORS[s.key] || "#888") + "'>" + esc(s.label) + " (latest " + usd(last) + ")</span>";
+    }).join("") + "<span class='note' style='--c:transparent'>" + dates.length + " day(s) · missing or hidden points are not interpolated</span>";
   }
 
   function renderAssumptions(L) {
     var a = L.assumptions || {}, inc = a.income || {}, cost = a.cost || {}, mkt = a.market || {}, comp = a.composite || {};
     $("assumptions").innerHTML =
-      "<p><strong>" + esc(a.disclaimer_zh || "以下参数均为占位假设，未经校准。") + "</strong> <span class='en'>All parameters below are placeholders (status: " + esc(a.status || DASH) + ").</span></p><ul>" +
-      "<li>收益法 DCF / Income: 剩余寿命 remaining life " + int(inc.remaining_life_years) + " 年 yrs · 利用率 utilization " + pct(inc.utilization) +
-      " · 运营成本 opex " + pct(inc.opex_ratio) + " of gross rent · 年折现率 discount " + pct(inc.discount_rate_annual) +
-      " · 期末残值 terminal " + (isNum(inc.terminal_value) ? String(inc.terminal_value) : DASH) + " · " + int(inc.hours_per_year) + " h/yr</li>" +
-      "<li>成本法 / Cost: 新卡锚点 × 剩余价值系数 " + (isNum(cost.unknown_age_remaining_fraction) ? cost.unknown_age_remaining_fraction : DASH) +
-      "（情景锚点寿命 " + int(cost.book_life_years_anchor) + " 年）。" + esc(cost.new_price_source || "") + "</li>" +
-      "<li>市场法 / Market: " + esc(mkt.listing_rule || DASH) + "</li>" +
-      "<li>综合 / Composite: " + esc(comp.rule || DASH) + "</li></ul>";
+      "<p><strong>" + esc(a.disclaimer || "All parameters below are uncalibrated placeholders.") + "</strong> <span class='en'>(status: " + esc(a.status || DASH) + ")</span></p><ul>" +
+      "<li>Income approach (DCF): remaining life " + int(inc.remaining_life_years) + " yrs · utilization " + pct(inc.utilization) +
+      " · opex " + pct(inc.opex_ratio) + " of gross rent · discount rate " + pct(inc.discount_rate_annual) +
+      " · terminal value " + (isNum(inc.terminal_value) ? String(inc.terminal_value) : DASH) + " · " + int(inc.hours_per_year) + " h/yr</li>" +
+      "<li>Cost approach: new-card anchor × remaining-value factor " + (isNum(cost.unknown_age_remaining_fraction) ? cost.unknown_age_remaining_fraction : DASH) +
+      " (scenario anchor life " + int(cost.book_life_years_anchor) + " yrs). " + esc(cost.new_price_source || "") + "</li>" +
+      "<li>Market approach: " + esc(mkt.listing_rule || DASH) + "</li>" +
+      "<li>Composite: " + esc(comp.rule || DASH) + "</li></ul>";
   }
 
   function renderHealth(L) {
     var h = L.source_health || [];
     var ok = h.filter(function (s) { return s.ok; }).length;
     var sk = h.filter(function (s) { return s.skipped; }).length;
-    $("health-caption").innerHTML = "本次运行 / this run: " + ok + " 成功 ok, " + (h.length - ok - sk) + " 失败 failed, " + sk +
-      " 跳过（许可未定）skipped (licence pending). 单源失败不影响其余源；未绕过任何访问限制。 <span class='en'>No access block was bypassed.</span>";
-    var roleMap = { licence_restricted: "许可受限 licence-restricted", cross_check_only: "仅交叉核对 cross-check only (weight 0)", collected: "采集 collected" };
-    $("health").innerHTML = "<thead><tr><th>源 Source</th><th>状态 Status</th><th class='num'>HTTP</th><th class='num'>观测 Obs</th><th>角色 Role</th><th>说明 Note</th></tr></thead><tbody>" +
+    $("health-caption").innerHTML = "This run: " + ok + " ok, " + (h.length - ok - sk) + " failed, " + sk +
+      " skipped (licence pending). A failing source does not stop the others. No access block was bypassed.";
+    var roleMap = { licence_restricted: "licence-restricted", cross_check_only: "cross-check only (weight 0)", collected: "collected" };
+    $("health").innerHTML = "<thead><tr><th>Source</th><th>Status</th><th class='num'>HTTP</th><th class='num'>Obs</th><th>Role</th><th>Note</th></tr></thead><tbody>" +
       h.map(function (s) {
-        var st = s.skipped ? "<span class='skip'>跳过 skipped</span>" : s.ok ? "<span class='ok'>成功 ok</span>" : "<span class='bad'>失败 failed</span>";
+        var st = s.skipped ? "<span class='skip'>skipped</span>" : s.ok ? "<span class='ok'>ok</span>" : "<span class='bad'>failed</span>";
         return "<tr><td>" + esc(s.source_id) + "</td><td>" + st + "</td><td class='num'>" + int(s.http_status) + "</td><td class='num'>" + int(s.observation_count) +
-          "</td><td>" + esc(roleMap[s.role] || s.role || DASH) + (s.observation_only ? "（仅观察，不进入官方计算 / observation only）" : "") + "</td><td>" + esc(s.error || DASH) + "</td></tr>";
+          "</td><td>" + esc(roleMap[s.role] || s.role || DASH) + (s.observation_only ? " (observation only; not used in the official calculation)" : "") +
+          "</td><td>" + esc(s.error || DASH) + "</td></tr>";
       }).join("") + "</tbody>";
   }
 
@@ -212,9 +215,9 @@
     var lic = L.licensing || {};
     var ex = (lic.excluded_from_index || []).map(function (e) { return "<li><code>" + esc(e.source_id) + "</code>: " + esc(e.reason) + "</li>"; }).join("");
     var cc = (lic.cross_check_only_not_published || []).map(function (e) { return "<li><code>" + esc(e.source_id) + "</code>: " + esc(e.reason) + "</li>"; }).join("");
-    $("licensing").innerHTML = "<p>" + esc(lic.note_zh || "") + "</p><p class='en'>" + esc(lic.note_en || "") + "</p>" +
-      (ex ? "<p><strong>不采集、不进入计算 / Excluded until licensed:</strong></p><ul>" + ex + "</ul>" : "") +
-      (cc ? "<p><strong>仅交叉核对、原始值不公开 / Cross-check only, raw values not published:</strong></p><ul>" + cc + "</ul>" : "");
+    $("licensing").innerHTML = "<p>" + esc(lic.note || "") + "</p>" +
+      (ex ? "<p><strong>Excluded until licensed:</strong></p><ul>" + ex + "</ul>" : "") +
+      (cc ? "<p><strong>Cross-check only; raw values not published:</strong></p><ul>" + cc + "</ul>" : "");
   }
 
   Promise.all([getJSON("data/latest.json"), getJSON("data/history.json")]).then(function (r) {
@@ -224,6 +227,6 @@
     document.body.setAttribute("data-rendered", "1");
   }).catch(function (e) {
     var el = $("error"); el.hidden = false;
-    el.textContent = "数据加载失败 / Failed to load data: " + e.message;
+    el.textContent = "Failed to load data: " + e.message;
   });
 })();

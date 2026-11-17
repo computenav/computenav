@@ -4,7 +4,7 @@
 Input  (private, never committed): <data-dir>/output/latest.json written by run_daily.py
 Output (public, committed):        docs/data/latest.json, docs/data/history.json
 
-Rules (see README "数据许可 / Data licensing"):
+Rules (see README "Data licensing"):
   * Only per-model aggregated NAV values, leg values, counts, medians and the
     placeholder assumptions are published.
   * NO listing-level observations, NO per-source prices, NO raw_label, NO
@@ -33,6 +33,8 @@ Rules (see README "数据许可 / Data licensing"):
 from __future__ import annotations
 
 import argparse
+import hashlib
+import re
 import json
 import sys
 from pathlib import Path
@@ -47,6 +49,69 @@ LABELS_EN = {
     "A100_80GB": "A100 80GB", "A100_40GB": "A100 40GB",
     "COMPOSITE": "Composite (equal-weight, to be calibrated)",
 }
+
+# English versions of the upstream (Chinese) assumption texts. Keyed by path;
+# each entry carries a short SHA-256 of the upstream text it translates. If the
+# upstream text changes, the hash no longer matches and the text is replaced by
+# UNTRANSLATED (with a warning) instead of publishing a stale translation.
+UNTRANSLATED = "[upstream text changed; English translation pending]"
+ASSUMPTION_TEXT_EN = {
+    ("disclaimer_zh",): ("1a3e076f0afa", "All parameters below are placeholder assumptions. They have not been calibrated by an index committee and are not official methodology parameters."),
+    ("income", "remaining_life_note"): ("e69c46b55325", "Placeholder: remaining economic life of 4 years. CoreWeave's 6-year accounting life and IREN's 5-year life for pledged GPUs are reference points only and are not this parameter."),
+    ("income", "utilization_note"): ("81d2afc37dcd", "Placeholder: 50% utilization. Must not be read as a calibrated market utilization."),
+    ("income", "opex_note"): ("671f55aba0da", "Placeholder: operating costs (power, rack space, operations) are deducted at 25% of gross rental revenue; not based on empirical power or colocation costs."),
+    ("income", "discount_note"): ("33679942762f", "Placeholder: 10% annual discount rate."),
+    ("income", "terminal_note"): ("abaf16a80b22", "Placeholder: terminal value of 0; no additional terminal value at the end of the life."),
+    ("income", "rental_rate_rule"): ("45a309c883bc", "Median of the day's on-demand / list rents (USD per GPU-hour) admitted to the income approach. Reserved, spot and unclear-term observations, and observations whose form factor cannot be assigned, are excluded from the median."),
+    ("cost", "book_life_note"): ("190b61bbd4db", "Placeholder: the straight-line life uses IREN's 5-year accounting life for pledged GPUs as a scenario anchor (CoreWeave uses 6 years for compute equipment). The official life is to be calibrated."),
+    ("cost", "age_note"): ("3e87306a5ad5", "Placeholder: used observations generally lack age, so the cost approach uses a 50% remaining-value factor (\"5-year straight line, midpoint for unknown age\"). Not a calibrated residual curve."),
+    ("cost", "new_price_source"): ("1de9ef7f365f", "Genius HPC \"New From\" prices on the same page (EUR ex-VAT dealer starting prices) are preferred. These are not NVIDIA MSRP and not US channel prices."),
+    ("market", "listing_rule"): ("692ece886998", "Only parseable dealer listings are used (Genius HPC in stock, Creative Compute on enquiry). AnchorGPU (ordering not open), third-party compilations (Clustermelt/Mulligan), unavailable systems, and systems simply divided by card count without deducting host components do not enter the official market-approach median."),
+    ("composite", "rule"): ("008851e89fec", "Equal-weight average of the four sub-indices (installed-base weights to be calibrated). Each sub-index's indicative NAV is the equal-weight average of the market/income/cost values available that day (method weights to be calibrated)."),
+}
+CJK_RE = re.compile(r"[\u3000-\u9fff\uff00-\uffef]")
+
+
+def translate_assumptions(a, path=()):
+    """Copy upstream assumptions; numbers unchanged, Chinese texts -> English."""
+    if isinstance(a, dict):
+        out = {}
+        for k, v in a.items():
+            key = "disclaimer" if path + (k,) == ("disclaimer_zh",) else k
+            out[key] = translate_assumptions(v, path + (k,))
+        return out
+    if isinstance(a, str) and CJK_RE.search(a):
+        entry = ASSUMPTION_TEXT_EN.get(path)
+        h = hashlib.sha256(a.encode()).hexdigest()[:12]
+        if entry and entry[0] == h:
+            return entry[1]
+        print(f"WARNING: no current English translation for assumptions.{'.'.join(path)} (sha {h})", file=sys.stderr)
+        return UNTRANSLATED
+    return a
+
+
+def englishify(obj, where="root"):
+    """Last line of defence: replace any remaining CJK string (e.g. an
+    upstream error message) with a placeholder, and warn."""
+    if isinstance(obj, dict):
+        return {k: englishify(v, f"{where}.{k}") for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [englishify(v, f"{where}[{i}]") for i, v in enumerate(obj)]
+    if isinstance(obj, str) and CJK_RE.search(obj):
+        print(f"WARNING: non-English text at {where} replaced", file=sys.stderr)
+        return "[non-English text omitted]"
+    return obj
+
+
+def assert_english(obj, where="root"):
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            assert_english(v, f"{where}.{k}")
+    elif isinstance(obj, list):
+        for i, v in enumerate(obj):
+            assert_english(v, f"{where}[{i}]")
+    elif isinstance(obj, str) and CJK_RE.search(obj):
+        raise SystemExit(f"GUARD: non-English text at {where}")
 
 # Sources whose terms forbid index use / redistribution without a licence.
 LICENCE_RESTRICTED = {
@@ -64,10 +129,8 @@ CROSS_CHECK_ONLY = {
     "serverpartdeals": "unavailable 8-GPU server listing; weight 0",
 }
 
-DISCLAIMER = {
-    "zh": "高中生研究项目。指示性数据，尚无成交样本；收益法与成本法参数均为待校准占位假设，不构成正式指数，不构成投资建议。",
-    "en": "High-school student research project. Indicative data only, no sold transactions yet; income/cost parameters are placeholders to be calibrated. Not an official index. Not investment advice.",
-}
+DISCLAIMER = ("High-school student research project. Indicative data only, no sold transactions yet; "
+              "income/cost parameters are placeholders to be calibrated. Not an official index. Not investment advice.")
 
 
 def _short(s, n=160):
@@ -172,14 +235,10 @@ def plan_masking(ns: dict) -> dict:
     return plan
 
 
-NAV_HIDDEN_REASON = {
-    "zh": "已隐藏：结合已公开的其他数值，可反推出某个样本不足（n<3）的分项。公式未改，上游仍按全部分项计算。",
-    "en": "Hidden: together with other published values it would reveal a method leg with n<3. Formula unchanged; computed upstream from all legs.",
-}
-COMPOSITE_HIDDEN_REASON = {
-    "zh": "已隐藏：综合为四个型号 NAV 的等权平均，公开它可反推出被隐藏的型号 NAV，进而反推出样本不足（n<3）的分项。",
-    "en": "Hidden: the composite is the equal-weight mean of model NAVs; publishing it would reveal a hidden model NAV and thus a leg with n<3.",
-}
+NAV_HIDDEN_REASON = ("Hidden: together with other published values it would reveal a method value with n<3. "
+                     "The formula is unchanged; the NAV is still computed upstream from all methods.")
+COMPOSITE_HIDDEN_REASON = ("Hidden: the composite is the equal-weight mean of the model NAVs; publishing it would "
+                           "reveal a hidden model NAV and therefore a method value with n<3.")
 
 
 def mask_model(m: dict, nav_status: str) -> dict:
@@ -260,8 +319,7 @@ def build_latest(priv: dict, allow_observation_only: bool = False) -> dict:
         legs = ((m.get("breakdown") or {}).get("indicative_nav") or {}).get("legs_used")
         models[key] = {
             "model_key": key,
-            "label": m.get("label") or key,
-            "label_en": LABELS_EN[key],
+            "label": LABELS_EN[key],
             "nav_indicative_usd": m.get("nav_indicative_usd"),
             "market_usd": m.get("market_usd"),
             "income_usd": m.get("income_usd"),
@@ -316,10 +374,9 @@ def build_latest(priv: dict, allow_observation_only: bool = False) -> dict:
             "usd_per_eur": fx.get("usd_per_eur"),
             "usd_per_gbp": fx.get("usd_per_gbp"),
         },
-        "assumptions": priv.get("assumptions"),
+        "assumptions": translate_assumptions(priv.get("assumptions") or {}),
         "composite": {
-            "label": comp.get("label") or "综合（等权，待校准）",
-            "label_en": LABELS_EN["COMPOSITE"],
+            "label": LABELS_EN["COMPOSITE"],
             "nav_indicative_usd": None if comp_hidden else comp.get("nav_indicative_usd"),
             "nav_hidden": comp_hidden,
             "nav_hidden_reason": COMPOSITE_HIDDEN_REASON if comp_hidden else None,
@@ -329,8 +386,7 @@ def build_latest(priv: dict, allow_observation_only: bool = False) -> dict:
         "models": models,
         "small_sample_rule": {
             "min_n": MIN_SAMPLE_N,
-            "zh": "任一方法（市场/收益/成本）样本数 n<3 时，不公开该方法数值及由其直接得出的数值（租金中位数、新卡锚点），只公开 n 并标记 insufficient_sample。指示性 NAV 与综合指数仍按上游方法论用全部分项计算（公式不变）；若公开后可反推出被隐藏的分项，则该 NAV/综合也隐藏（nav_hidden=true）。",
-            "en": "Any method leg with n<3 is published as null with its n and insufficient_sample=true; derived values (rent median, new-card anchor) are hidden too. NAV and composite are computed upstream from all legs (formula unchanged) but are hidden (nav_hidden=true) if publishing them would let a hidden leg be backed out.",
+            "text": "Any method leg with n<3 is published as null with its n and insufficient_sample=true; derived values (rent median, new-card anchor) are hidden too. NAV and composite are computed upstream from all legs (formula unchanged) but are hidden (nav_hidden=true) if publishing them would let a hidden leg be backed out.",
         },
         "source_health": pub_health,
         "licensing": {
@@ -340,8 +396,7 @@ def build_latest(priv: dict, allow_observation_only: bool = False) -> dict:
             "cross_check_only_not_published": [
                 {"source_id": k, "reason": v} for k, v in CROSS_CHECK_ONLY.items()
             ],
-            "note_zh": "公开数据仅含按型号汇总的指示性 NAV、三法结果、样本数与中位数；不含任何单条挂牌/租金观测或分来源原始价格。按方法论第 10 节，Vast.ai、eBay、Clustermelt、Mulligan 不进入官方计算；每日 CI 不抓取 Vast.ai 与 eBay。",
-            "note_en": "Public data contains only per-model aggregates (indicative NAV, method legs, counts, medians). No listing-level observations or per-source raw prices. Per methodology section 10, Vast.ai, eBay, Clustermelt and Mulligan are excluded from the official calculation; the daily CI does not fetch Vast.ai or eBay.",
+            "note": "Public data contains only per-model aggregates (indicative NAV, method legs, counts, medians). No listing-level observations or per-source raw prices. Per methodology section 10, Vast.ai, eBay, Clustermelt and Mulligan are excluded from the official calculation; the daily CI does not fetch Vast.ai or eBay.",
         },
     }
 
@@ -354,13 +409,14 @@ def upsert_history(hist: dict | None, latest_pub: dict) -> dict:
     if not date:
         raise SystemExit("latest has no asof_date_pt")
     for key in SERIES_KEYS:
-        s = hist["series"].setdefault(key, {"label": None, "label_en": LABELS_EN[key], "points": []})
+        s = hist["series"].setdefault(key, {"label": LABELS_EN[key], "points": []})
+        s.pop("label_en", None)
         if key == "COMPOSITE":
             src = latest_pub["composite"]
             pt = {"asof_date_pt": date, "computed_at_pt": latest_pub["computed_at_pt"],
                   "nav_indicative_usd": src.get("nav_indicative_usd"),
                   "nav_hidden": bool(src.get("nav_hidden"))}
-            s["label"] = src.get("label")
+            s["label"] = LABELS_EN[key]
         else:
             src = latest_pub["models"].get(key) or {}
             pt = {"asof_date_pt": date, "computed_at_pt": latest_pub["computed_at_pt"],
@@ -370,8 +426,7 @@ def upsert_history(hist: dict | None, latest_pub: dict) -> dict:
                   "market_n": src.get("market_n"), "income_n": src.get("income_n"), "cost_n": src.get("cost_n"),
                   "insufficient_sample": src.get("insufficient_sample"),
                   "nav_hidden": bool(src.get("nav_hidden"))}
-            s["label"] = src.get("label") or key
-        s["label_en"] = LABELS_EN[key]
+            s["label"] = LABELS_EN[key]
         pts = [p for p in s.get("points", []) if p.get("asof_date_pt") != date]
         pts.append(pt)
         s["points"] = sorted(pts, key=lambda p: p["asof_date_pt"])
@@ -404,7 +459,7 @@ def main(argv=None):
     a = ap.parse_args(argv)
 
     priv = json.loads(Path(a.private_latest).read_text())
-    pub = build_latest(priv, a.allow_observation_only)
+    pub = englishify(build_latest(priv, a.allow_observation_only))
     if all(pub["models"][k] is None or pub["models"][k]["nav_indicative_usd"] is None for k in MODEL_KEYS):
         raise SystemExit("no model produced an indicative NAV today; not publishing")
     out = Path(a.public_dir)
@@ -415,6 +470,8 @@ def main(argv=None):
     assert_clean(pub)
     assert_clean(hist)
     assert_small_sample(pub, hist)
+    assert_english(pub)
+    assert_english(hist)
     (out / "latest.json").write_text(json.dumps(pub, indent=2, ensure_ascii=False) + "\n")
     hp.write_text(json.dumps(hist, indent=2, ensure_ascii=False) + "\n")
     print(f"wrote {out/'latest.json'} and {hp} (asof {pub['asof_date_pt']}, {len(hist['dates'])} history dates)")
