@@ -6,7 +6,7 @@
       "points": [
         {
           "asof_date_pt": "2026-11-16",
-          "computed_at_pt": "2026-11-17T03:10:10.302667-08:00",
+          "computed_at_pt": "2026-11-17T03:13:52.487389-08:00",
           "nav_indicative_usd": 20216.27,
           "market_usd": null,
           "income_usd": 41123.05,
@@ -28,7 +28,7 @@
       "points": [
         {
           "asof_date_pt": "2026-11-16",
-          "computed_at_pt": "2026-11-17T03:10:10.302667-08:00",
+          "computed_at_pt": "2026-11-17T03:13:52.487389-08:00",
           "nav_indicative_usd": 17037.79,
           "market_usd": null,
           "income_usd": 26032.52,
@@ -50,7 +50,7 @@
       "points": [
         {
           "asof_date_pt": "2026-11-16",
-          "computed_at_pt": "2026-11-17T03:10:10.302667-08:00",
+          "computed_at_pt": "2026-11-17T03:13:52.487389-08:00",
           "nav_indicative_usd": null,
           "market_usd": 7474.71,
           "income_usd": 14578.21,
@@ -72,7 +72,7 @@
       "points": [
         {
           "asof_date_pt": "2026-11-16",
-          "computed_at_pt": "2026-11-17T03:10:10.302667-08:00",
+          "computed_at_pt": "2026-11-17T03:13:52.487389-08:00",
           "nav_indicative_usd": 20721.89,
           "market_usd": null,
           "income_usd": 20721.89,
@@ -94,7 +94,7 @@
       "points": [
         {
           "asof_date_pt": "2026-11-16",
-          "computed_at_pt": "2026-11-17T03:10:10.302667-08:00",
+          "computed_at_pt": "2026-11-17T03:13:52.487389-08:00",
           "nav_indicative_usd": null,
           "nav_hidden": true
         }
@@ -104,5 +104,5 @@
   "dates": [
     "2026-11-16"
   ],
-  "generated_at_pt": "2026-11-17T03:10:10.302667-08:00"
+  "generated_at_pt": "2026-11-17T03:13:52.487389-08:00"
 }

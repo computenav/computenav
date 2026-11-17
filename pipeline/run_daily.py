@@ -1017,6 +1017,40 @@ SOURCE_PLAN = [
 ]
 
 
+# Competitor denylist (2026-11-17): data from Silicon Data, Ornn and
+# SemiAnalysis must never enter the NAV calculation or dashboard data, as input
+# or as validation/calibration. Matching sources/observations are refused.
+COMPETITOR_DENYLIST = (
+    "silicondata", "silicon data", "silicon-data", "silicon_data",
+    "ornn", "ornnai",
+    "semianalysis", "semi analysis", "semi-analysis", "semi_analysis",
+)
+
+
+def _competitor_hit(*values) -> Optional[str]:
+    for v in values:
+        s = str(v or "").lower()
+        for term in COMPETITOR_DENYLIST:
+            if term in s:
+                return term
+    return None
+
+
+def assert_no_competitor_sources(plan) -> None:
+    for src in plan:
+        hit = _competitor_hit(src.get("id"), src.get("url"), src.get("name"),
+                              getattr(src.get("parser"), "__name__", ""))
+        if hit:
+            raise SystemExit(f"refusing denylisted competitor source {src.get('id')!r} (matched {hit!r})")
+
+
+def assert_no_competitor_rows(rows) -> None:
+    for r in rows:
+        hit = _competitor_hit(r.get("source_id"), r.get("source_name"), r.get("source_url"))
+        if hit:
+            raise SystemExit(f"refusing observation from denylisted competitor source {r.get('source_id')!r} (matched {hit!r})")
+
+
 def compute_index(observations, asof_date_pt, computed_at_utc, computed_at_pt):
     rows = []
     per_model = {}
@@ -1272,6 +1306,7 @@ def run():
         handlers=[logging.FileHandler(log_path, encoding="utf-8"), logging.StreamHandler(sys.stdout)],
     )
     log.info("run_id=%s asof_date_pt=%s", run_id, asof_date_pt)
+    assert_no_competitor_sources(SOURCE_PLAN)
 
     conn = connect_db()
     fx = FX()
@@ -1329,6 +1364,7 @@ def run():
                         if not row.get("source_id"):
                             row["source_id"] = sid
                         mark_observation_only(row)
+                    assert_no_competitor_rows(rows)
                     insert_observations(conn, rows)
                     observations.extend(rows)
                     n_obs = len(rows)
@@ -1425,6 +1461,7 @@ def recompute_from_run(run_id: str) -> int:
         log.error("no observations for run_id=%s", run_id)
         return 2
     asof_date_pt = raw_rows[0]["asof_date_pt"]
+    assert_no_competitor_rows(raw_rows)
     corrected = 0
     for row in raw_rows:
         before = (row.get("include_in_market"), row.get("include_in_income"), row.get("include_in_cost_new"))

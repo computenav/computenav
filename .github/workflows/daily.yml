@@ -58,6 +58,12 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
+      - name: Competitor denylist check (before compute)
+        run: python pipeline/check_sources.py
+
+      - name: Guard tests (offline)
+        run: python -m unittest pipeline/test_guards.py
+
       - name: Run daily pipeline (private data stays in RUNNER_TEMP)
         if: github.event_name != 'push'
         env:
