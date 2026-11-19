@@ -1,20 +1,20 @@
 {
   "schema_version": 2,
-  "asof_date_pt": "2026-11-18",
-  "computed_at_pt": "2026-11-18T12:49:19.843814-08:00",
-  "computed_at_utc": "2026-11-18T20:49:19.843814+00:00",
-  "run_id": "20261118T124834_PT",
+  "asof_date_pt": "2026-11-19",
+  "computed_at_pt": "2026-11-19T02:45:09.352089-08:00",
+  "computed_at_utc": "2026-11-19T10:45:09.352089+00:00",
+  "run_id": "20261119T024456_PT",
   "disclaimer": "High-school student research project. Indicative data only, no sold transactions yet; income/cost parameters are placeholders to be calibrated. Not an official index. Not investment advice.",
   "sold_count_today": 0,
-  "observation_count": 84,
+  "observation_count": 86,
   "official_observation_counts": {
     "market": 6,
-    "income": 26,
+    "income": 27,
     "cost_new": 4
   },
   "fx": {
     "source": "https://www.exchangerate-api.com (https://www.exchangerate-api.com/docs/free)",
-    "asof_utc": "Wed, 18 Nov 2026 00:02:31 +0000",
+    "asof_utc": "Thu, 19 Nov 2026 00:02:31 +0000",
     "note": "All published values are in USD. Non-USD source prices are converted to USD internally at this daily FX rate; the rates themselves are not published."
   },
   "assumptions": {
@@ -62,15 +62,15 @@
     "H100_SXM": {
       "model_key": "H100_SXM",
       "label": "H100 SXM",
-      "nav_indicative_usd": 20556.19,
+      "nav_indicative_usd": 19742.94,
       "market_usd": null,
-      "income_usd": 43522.21,
+      "income_usd": 41123.05,
       "cost_usd": null,
       "market_n": 1,
-      "income_n": 10,
+      "income_n": 11,
       "cost_n": 1,
       "legs_used": 3,
-      "rental_median_usd_per_hour": 4.1796,
+      "rental_median_usd_per_hour": 3.9492,
       "new_card_usd": null,
       "quality_flag": "sold_n=0;income_assumptions=to-be-calibrated;cost_age_fraction=to-be-calibrated",
       "insufficient_sample": {
@@ -84,7 +84,7 @@
     "H100_PCIe": {
       "model_key": "H100_PCIe",
       "label": "H100 PCIe",
-      "nav_indicative_usd": 16694.76,
+      "nav_indicative_usd": 16673.54,
       "market_usd": null,
       "income_usd": 26032.52,
       "cost_usd": null,
@@ -107,7 +107,7 @@
       "model_key": "A100_80GB",
       "label": "A100 80GB",
       "nav_indicative_usd": null,
-      "market_usd": 6946.65,
+      "market_usd": 6931.12,
       "income_usd": 14578.21,
       "cost_usd": null,
       "market_n": 3,
@@ -315,13 +315,13 @@
     },
     {
       "source_id": "nebius",
-      "ok": false,
+      "ok": true,
       "skipped": false,
-      "http_status": 403,
-      "observation_count": 0,
+      "http_status": 200,
+      "observation_count": 2,
       "role": "collected",
       "observation_only": false,
-      "error": "HTTPError 403 Forbidden"
+      "error": null
     },
     {
       "source_id": "together",
