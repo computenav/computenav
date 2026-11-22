@@ -1,9 +1,9 @@
 {
   "schema_version": 2,
   "asof_date_pt": "2026-11-22",
-  "computed_at_pt": "2026-11-22T06:55:07.239112-08:00",
-  "computed_at_utc": "2026-11-22T14:55:07.239112+00:00",
-  "run_id": "20261122T065457_PT",
+  "computed_at_pt": "2026-11-22T11:55:16.186810-08:00",
+  "computed_at_utc": "2026-11-22T19:55:16.186810+00:00",
+  "run_id": "20261122T115501_PT",
   "disclaimer": "High-school student research project. Indicative data only, no sold transactions yet; income/cost parameters are placeholders to be calibrated. Not an official index. Not investment advice.",
   "sold_count_today": 0,
   "observation_count": 86,
