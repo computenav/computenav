@@ -1,16 +1,16 @@
 {
   "schema_version": 2,
-  "asof_date_pt": "2026-11-23",
-  "computed_at_pt": "2026-11-23T16:12:36.945390-08:00",
-  "computed_at_utc": "2026-11-24T00:12:36.945390+00:00",
-  "run_id": "20261123T161202_PT",
+  "asof_date_pt": "2026-11-24",
+  "computed_at_pt": "2026-11-24T06:58:04.589659-08:00",
+  "computed_at_utc": "2026-11-24T14:58:04.589659+00:00",
+  "run_id": "20261124T065749_PT",
   "disclaimer": "High-school student research project. Indicative data only, no sold transactions yet; income/cost parameters are placeholders to be calibrated. Not an official index. Not investment advice.",
   "sold_count_today": 0,
-  "observation_count": 68,
+  "observation_count": 80,
   "official_observation_counts": {
-    "market": 2,
+    "market": 6,
     "income": 27,
-    "cost_new": 0
+    "cost_new": 4
   },
   "fx": {
     "source": "https://www.exchangerate-api.com (https://www.exchangerate-api.com/docs/free)",
@@ -52,9 +52,9 @@
   },
   "composite": {
     "label": "Composite (equal-weight, to be calibrated)",
-    "nav_indicative_usd": 24157.12,
-    "nav_hidden": false,
-    "nav_hidden_reason": null,
+    "nav_indicative_usd": null,
+    "nav_hidden": true,
+    "nav_hidden_reason": "Hidden: the composite is the equal-weight mean of the model NAVs; publishing it would reveal a hidden model NAV and therefore a method value with n<3.",
     "n_models": 4,
     "quality_flag": "equal_weight_of_four_models;installed_base_weights=to-be-calibrated;sold_n=0"
   },
@@ -62,21 +62,21 @@
     "H100_SXM": {
       "model_key": "H100_SXM",
       "label": "H100 SXM",
-      "nav_indicative_usd": 41123.05,
+      "nav_indicative_usd": 19714.02,
       "market_usd": null,
       "income_usd": 41123.05,
       "cost_usd": null,
-      "market_n": 0,
+      "market_n": 1,
       "income_n": 11,
-      "cost_n": 0,
-      "legs_used": 1,
+      "cost_n": 1,
+      "legs_used": 3,
       "rental_median_usd_per_hour": 3.9492,
       "new_card_usd": null,
-      "quality_flag": "no_official_listings;sold_n=0;no_new_card_anchor;income_assumptions=to-be-calibrated;cost_age_fraction=to-be-calibrated",
+      "quality_flag": "sold_n=0;income_assumptions=to-be-calibrated;cost_age_fraction=to-be-calibrated",
       "insufficient_sample": {
-        "market": false,
+        "market": true,
         "income": false,
-        "cost": false
+        "cost": true
       },
       "nav_hidden": false,
       "nav_hidden_reason": null
@@ -84,43 +84,43 @@
     "H100_PCIe": {
       "model_key": "H100_PCIe",
       "label": "H100 PCIe",
-      "nav_indicative_usd": null,
+      "nav_indicative_usd": 16621.79,
       "market_usd": null,
       "income_usd": 26032.52,
       "cost_usd": null,
-      "market_n": 1,
+      "market_n": 2,
       "income_n": 3,
-      "cost_n": 0,
-      "legs_used": 2,
+      "cost_n": 1,
+      "legs_used": 3,
       "rental_median_usd_per_hour": 2.5,
       "new_card_usd": null,
-      "quality_flag": "sold_n=0;no_new_card_anchor;income_assumptions=to-be-calibrated;cost_age_fraction=to-be-calibrated",
+      "quality_flag": "sold_n=0;income_assumptions=to-be-calibrated;cost_age_fraction=to-be-calibrated",
       "insufficient_sample": {
         "market": true,
         "income": false,
-        "cost": false
+        "cost": true
       },
-      "nav_hidden": true,
-      "nav_hidden_reason": "Hidden: together with other published values it would reveal a method value with n<3. The formula is unchanged; the NAV is still computed upstream from all methods."
+      "nav_hidden": false,
+      "nav_hidden_reason": null
     },
     "A100_80GB": {
       "model_key": "A100_80GB",
       "label": "A100 80GB",
       "nav_indicative_usd": null,
-      "market_usd": null,
+      "market_usd": 6897.9,
       "income_usd": 14578.21,
       "cost_usd": null,
-      "market_n": 1,
+      "market_n": 3,
       "income_n": 9,
-      "cost_n": 0,
-      "legs_used": 2,
+      "cost_n": 2,
+      "legs_used": 3,
       "rental_median_usd_per_hour": 1.4,
       "new_card_usd": null,
-      "quality_flag": "sold_n=0;no_new_card_anchor;income_assumptions=to-be-calibrated;cost_age_fraction=to-be-calibrated",
+      "quality_flag": "sold_n=0;income_assumptions=to-be-calibrated;cost_age_fraction=to-be-calibrated",
       "insufficient_sample": {
-        "market": true,
+        "market": false,
         "income": false,
-        "cost": false
+        "cost": true
       },
       "nav_hidden": true,
       "nav_hidden_reason": "Hidden: together with other published values it would reveal a method value with n<3. The formula is unchanged; the NAV is still computed upstream from all methods."
@@ -175,13 +175,13 @@
     },
     {
       "source_id": "geniushpc",
-      "ok": false,
+      "ok": true,
       "skipped": false,
-      "http_status": 522,
-      "observation_count": 0,
+      "http_status": 200,
+      "observation_count": 12,
       "role": "collected",
       "observation_only": false,
-      "error": "HTTPError 522 <none>"
+      "error": null
     },
     {
       "source_id": "creative_h100",
