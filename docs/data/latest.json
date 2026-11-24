@@ -1,9 +1,9 @@
 {
   "schema_version": 2,
   "asof_date_pt": "2026-11-24",
-  "computed_at_pt": "2026-11-24T06:58:04.589659-08:00",
-  "computed_at_utc": "2026-11-24T14:58:04.589659+00:00",
-  "run_id": "20261124T065749_PT",
+  "computed_at_pt": "2026-11-24T14:41:10.886576-08:00",
+  "computed_at_utc": "2026-11-24T22:41:10.886576+00:00",
+  "run_id": "20261124T144100_PT",
   "disclaimer": "High-school student research project. Indicative data only, no sold transactions yet; income/cost parameters are placeholders to be calibrated. Not an official index. Not investment advice.",
   "sold_count_today": 0,
   "observation_count": 80,
@@ -79,19 +79,19 @@
       "rental_median_usd_per_hour": 3.9492,
       "new_card_usd": null,
       "quality_flag": "sold_n=0;income_assumptions=to-be-calibrated;cost_age_fraction=to-be-calibrated",
+      "carried_forward": false,
+      "stale": false,
+      "dod_excluded": false,
+      "carry_reason": null,
+      "carried_from_asof": null,
+      "legs_present": 3,
       "insufficient_sample": {
         "market": true,
         "income": false,
         "cost": true
       },
       "nav_hidden": false,
-      "nav_hidden_reason": null,
-      "carried_forward": false,
-      "stale": false,
-      "dod_excluded": false,
-      "carry_reason": null,
-      "carried_from_asof": null,
-      "legs_present": 3
+      "nav_hidden_reason": null
     },
     "H100_PCIe": {
       "model_key": "H100_PCIe",
@@ -107,19 +107,19 @@
       "rental_median_usd_per_hour": 2.5,
       "new_card_usd": null,
       "quality_flag": "sold_n=0;income_assumptions=to-be-calibrated;cost_age_fraction=to-be-calibrated",
+      "carried_forward": false,
+      "stale": false,
+      "dod_excluded": false,
+      "carry_reason": null,
+      "carried_from_asof": null,
+      "legs_present": 3,
       "insufficient_sample": {
         "market": true,
         "income": false,
         "cost": true
       },
       "nav_hidden": false,
-      "nav_hidden_reason": null,
-      "carried_forward": false,
-      "stale": false,
-      "dod_excluded": false,
-      "carry_reason": null,
-      "carried_from_asof": null,
-      "legs_present": 3
+      "nav_hidden_reason": null
     },
     "A100_80GB": {
       "model_key": "A100_80GB",
@@ -135,19 +135,19 @@
       "rental_median_usd_per_hour": 1.4,
       "new_card_usd": null,
       "quality_flag": "sold_n=0;income_assumptions=to-be-calibrated;cost_age_fraction=to-be-calibrated",
+      "carried_forward": false,
+      "stale": false,
+      "dod_excluded": false,
+      "carry_reason": null,
+      "carried_from_asof": null,
+      "legs_present": 3,
       "insufficient_sample": {
         "market": false,
         "income": false,
         "cost": true
       },
       "nav_hidden": true,
-      "nav_hidden_reason": "Hidden: together with other published values it would reveal a method value with n<3. The formula is unchanged; the NAV is still computed upstream from all methods.",
-      "carried_forward": false,
-      "stale": false,
-      "dod_excluded": false,
-      "carry_reason": null,
-      "carried_from_asof": null,
-      "legs_present": 3
+      "nav_hidden_reason": "Hidden: together with other published values it would reveal a method value with n<3. The formula is unchanged; the NAV is still computed upstream from all methods."
     },
     "A100_40GB": {
       "model_key": "A100_40GB",
@@ -163,19 +163,19 @@
       "rental_median_usd_per_hour": 1.99,
       "new_card_usd": null,
       "quality_flag": "no_official_listings;sold_n=0;no_new_card_anchor;income_assumptions=to-be-calibrated;cost_age_fraction=to-be-calibrated",
+      "carried_forward": false,
+      "stale": false,
+      "dod_excluded": false,
+      "carry_reason": null,
+      "carried_from_asof": null,
+      "legs_present": 1,
       "insufficient_sample": {
         "market": false,
         "income": false,
         "cost": false
       },
       "nav_hidden": false,
-      "nav_hidden_reason": null,
-      "carried_forward": false,
-      "stale": false,
-      "dod_excluded": false,
-      "carry_reason": null,
-      "carried_from_asof": null,
-      "legs_present": 1
+      "nav_hidden_reason": null
     }
   },
   "small_sample_rule": {

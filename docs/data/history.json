@@ -190,7 +190,7 @@
         },
         {
           "asof_date_pt": "2026-11-24",
-          "computed_at_pt": "2026-11-24T06:58:04.589659-08:00",
+          "computed_at_pt": "2026-11-24T14:41:10.886576-08:00",
           "nav_indicative_usd": 19714.02,
           "market_usd": null,
           "income_usd": 41123.05,
@@ -402,7 +402,7 @@
         },
         {
           "asof_date_pt": "2026-11-24",
-          "computed_at_pt": "2026-11-24T06:58:04.589659-08:00",
+          "computed_at_pt": "2026-11-24T14:41:10.886576-08:00",
           "nav_indicative_usd": 16621.79,
           "market_usd": null,
           "income_usd": 26032.52,
@@ -614,7 +614,7 @@
         },
         {
           "asof_date_pt": "2026-11-24",
-          "computed_at_pt": "2026-11-24T06:58:04.589659-08:00",
+          "computed_at_pt": "2026-11-24T14:41:10.886576-08:00",
           "nav_indicative_usd": null,
           "market_usd": 6897.9,
           "income_usd": 14578.21,
@@ -826,7 +826,7 @@
         },
         {
           "asof_date_pt": "2026-11-24",
-          "computed_at_pt": "2026-11-24T06:58:04.589659-08:00",
+          "computed_at_pt": "2026-11-24T14:41:10.886576-08:00",
           "nav_indicative_usd": 20721.89,
           "market_usd": null,
           "income_usd": 20721.89,
@@ -950,7 +950,7 @@
         },
         {
           "asof_date_pt": "2026-11-24",
-          "computed_at_pt": "2026-11-24T06:58:04.589659-08:00",
+          "computed_at_pt": "2026-11-24T14:41:10.886576-08:00",
           "nav_indicative_usd": null,
           "nav_hidden": true,
           "carried_forward": false,
@@ -974,5 +974,5 @@
     "2026-11-23",
     "2026-11-24"
   ],
-  "generated_at_pt": "2026-11-24T06:58:04.589659-08:00"
+  "generated_at_pt": "2026-11-24T14:41:10.886576-08:00"
 }
