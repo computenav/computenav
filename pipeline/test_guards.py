@@ -107,3 +107,146 @@ class PublicDataTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+class PublicationGuardExportTests(unittest.TestCase):
+    def _latest_shell(self):
+        L = json.loads((DATA / "latest.json").read_text())
+        # Minimal public-shaped latest used as the upsert source.
+        return L
+
+    def test_guard_fields_present_and_raw_nav_absent(self):
+        L = json.loads((DATA / "latest.json").read_text())
+        H = json.loads((DATA / "history.json").read_text())
+        keys = ("carried_forward", "stale", "dod_excluded", "carry_reason", "carried_from_asof", "legs_present")
+        for k, m in L["models"].items():
+            for f in keys:
+                self.assertIn(f, m, msg=k)
+            self.assertNotIn("raw_nav_indicative_usd", m)
+            self.assertNotIn("raw_nav_usd", m)
+            if m.get("stale") or m.get("carried_forward"):
+                self.assertTrue(m["dod_excluded"])
+            if k != "COMPOSITE":
+                self.assertIsInstance(m["legs_present"], int)
+        for f in keys:
+            self.assertIn(f, L["composite"])
+        self.assertIsNone(L["composite"]["legs_present"])
+        self.assertNotIn("raw_nav_indicative_usd", L["composite"])
+        for key, s in H["series"].items():
+            for pt in s["points"]:
+                for f in keys:
+                    self.assertIn(f, pt, msg=f"{key} {pt.get('asof_date_pt')}")
+                self.assertNotIn("raw_nav_indicative_usd", pt)
+                self.assertNotIn("raw_nav_usd", pt)
+
+    def test_build_latest_strips_raw_nav(self):
+        priv = {
+            "asof_date_pt": "2026-11-24",
+            "computed_at_pt": "2026-11-24T06:58:04-08:00",
+            "computed_at_utc": "2026-11-24T14:58:04+00:00",
+            "run_id": "test",
+            "sold_count_today": 0,
+            "observation_count": 0,
+            "official_observation_counts": {"market": 0, "income": 0, "cost_new": 0},
+            "fx": {"source": "test", "asof_utc": "2026-11-24T00:00:00+00:00"},
+            "assumptions": {},
+            "source_health": [],
+            "models": {},
+            "composite": {
+                "nav_indicative_usd": 100.0,
+                "quality_flag": "",
+                "breakdown": {"n_models": 4},
+                "raw_nav_indicative_usd": 999.0,
+                "stale": False,
+                "carried_forward": False,
+            },
+        }
+        # Use a real published latest as a template for model shapes/n counts.
+        published = json.loads((DATA / "latest.json").read_text())
+        for k, m in published["models"].items():
+            priv["models"][k] = {
+                "nav_indicative_usd": 1.0,
+                "market_usd": None,
+                "income_usd": None,
+                "cost_usd": None,
+                "market_n": m["market_n"],
+                "income_n": m["income_n"],
+                "cost_n": m["cost_n"],
+                "rental_median_usd_per_hour": None,
+                "new_card_usd": None,
+                "quality_flag": "",
+                "breakdown": {"indicative_nav": {"legs_used": 1}},
+                "raw_nav_indicative_usd": 12345.67,
+                "stale": False,
+                "carried_forward": False,
+                "dod_excluded": False,
+                "carry_reason": None,
+                "carried_from_asof": None,
+                "legs_present": m.get("legs_present") or 0,
+            }
+        pub = ep.build_latest(priv)
+        blob = json.dumps(pub)
+        self.assertNotIn("raw_nav_indicative_usd", blob)
+        self.assertNotIn("12345.67", blob)
+        self.assertIn("carried_forward", pub["models"]["H100_SXM"])
+        self.assertFalse(pub["models"]["H100_SXM"]["stale"])
+        with self.assertRaises(SystemExit):
+            ep.assert_clean({"raw_nav_indicative_usd": 1})
+
+    def test_upsert_refuses_stale_or_fewer_legs(self):
+        L = json.loads((DATA / "latest.json").read_text())
+        H = json.loads((DATA / "history.json").read_text())
+        date = L["asof_date_pt"]
+        before = copy.deepcopy(H)
+        # Stale incoming point must not replace the stored same-day point.
+        stale = copy.deepcopy(L)
+        stale["models"]["H100_SXM"]["stale"] = True
+        stale["models"]["H100_SXM"]["carried_forward"] = True
+        stale["models"]["H100_SXM"]["dod_excluded"] = True
+        stale["models"]["H100_SXM"]["nav_indicative_usd"] = 1.0
+        out = ep.upsert_history(copy.deepcopy(H), stale)
+        stored = next(p for p in out["series"]["H100_SXM"]["points"] if p["asof_date_pt"] == date)
+        self.assertEqual(stored["nav_indicative_usd"], L["models"]["H100_SXM"]["nav_indicative_usd"])
+        self.assertFalse(stored.get("stale"))
+        # Fewer legs must not replace a more complete same-day point.
+        fewer = copy.deepcopy(L)
+        fewer["models"]["H100_SXM"]["market_n"] = 0
+        fewer["models"]["H100_SXM"]["cost_n"] = 0
+        fewer["models"]["H100_SXM"]["legs_present"] = 1
+        fewer["models"]["H100_SXM"]["nav_indicative_usd"] = 2.0
+        out2 = ep.upsert_history(copy.deepcopy(H), fewer)
+        stored2 = next(p for p in out2["series"]["H100_SXM"]["points"] if p["asof_date_pt"] == date)
+        self.assertEqual(stored2["nav_indicative_usd"], L["models"]["H100_SXM"]["nav_indicative_usd"])
+        self.assertGreaterEqual(stored2["legs_present"], 3)
+        # A non-stale same-leg (or better) point is allowed.
+        better = copy.deepcopy(L)
+        better["computed_at_pt"] = "2026-11-24T12:00:00-08:00"
+        out3 = ep.upsert_history(copy.deepcopy(H), better)
+        stored3 = next(p for p in out3["series"]["H100_SXM"]["points"] if p["asof_date_pt"] == date)
+        self.assertEqual(stored3["computed_at_pt"], "2026-11-24T12:00:00-08:00")
+        self.assertEqual(before["series"]["H100_SXM"]["points"][-1]["asof_date_pt"], date)
+
+    def test_nov23_history_restored_to_morning(self):
+        H = json.loads((DATA / "history.json").read_text())
+        def pt(key):
+            return next(p for p in H["series"][key]["points"] if p["asof_date_pt"] == "2026-11-23")
+        sxm = pt("H100_SXM")
+        self.assertEqual(sxm["nav_indicative_usd"], 19743.73)
+        self.assertEqual(sxm["income_usd"], 41123.05)
+        self.assertIsNone(sxm["market_usd"])  # n=1, hidden
+        self.assertIsNone(sxm["cost_usd"])    # n=1, hidden
+        self.assertEqual((sxm["market_n"], sxm["income_n"], sxm["cost_n"]), (1, 11, 1))
+        self.assertFalse(sxm.get("stale") or sxm.get("carried_forward") or sxm.get("dod_excluded"))
+        self.assertEqual(sxm["computed_at_pt"], "2026-11-23T06:59:14.115579-08:00")
+        self.assertEqual(pt("H100_PCIe")["nav_indicative_usd"], 16658.03)
+        self.assertTrue(pt("A100_80GB")["nav_hidden"])
+        self.assertIsNone(pt("A100_80GB")["nav_indicative_usd"])
+        self.assertIsNone(pt("A100_80GB")["cost_usd"])  # n=2, hidden
+        self.assertEqual(pt("A100_40GB")["nav_indicative_usd"], 20721.89)
+        self.assertTrue(pt("COMPOSITE")["nav_hidden"])
+        self.assertIsNone(pt("COMPOSITE")["nav_indicative_usd"])
+        blob = json.dumps(H)
+        self.assertNotIn("8639.79", blob)
+        self.assertNotIn("16440.86", blob)
+        self.assertNotIn("10563.08", blob)
+        self.assertNotIn("7545.06", blob)
+        self.assertNotIn("raw_nav", blob)

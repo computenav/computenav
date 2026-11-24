@@ -37,3 +37,8 @@ footer{border-top:1px solid var(--line);padding:16px 20px;color:var(--muted);fon
 a{color:var(--accent)}
 #breakdown td:last-child{min-width:220px}
 td.num .skip{white-space:normal;display:inline-block;max-width:9em;text-align:right}
+
+.badge.stale{display:inline-block;margin-left:8px;vertical-align:middle;background:var(--warnbg);border:1px solid #f0b54a;color:var(--warn);font-weight:700;border-radius:999px;padding:2px 10px;font-size:12px;letter-spacing:.01em}
+.metric .l .badge.stale{margin-left:0;margin-top:6px;display:inline-block}
+.dod{font-size:13px;font-weight:600;margin:4px 0 2px;color:var(--muted);font-variant-numeric:tabular-nums}
+.dod.skipped{font-weight:600;color:var(--warn)}

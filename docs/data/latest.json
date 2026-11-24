@@ -56,7 +56,13 @@
     "nav_hidden": true,
     "nav_hidden_reason": "Hidden: the composite is the equal-weight mean of the model NAVs; publishing it would reveal a hidden model NAV and therefore a method value with n<3.",
     "n_models": 4,
-    "quality_flag": "equal_weight_of_four_models;installed_base_weights=to-be-calibrated;sold_n=0"
+    "quality_flag": "equal_weight_of_four_models;installed_base_weights=to-be-calibrated;sold_n=0",
+    "carried_forward": false,
+    "stale": false,
+    "dod_excluded": false,
+    "carry_reason": null,
+    "carried_from_asof": null,
+    "legs_present": null
   },
   "models": {
     "H100_SXM": {
@@ -79,7 +85,13 @@
         "cost": true
       },
       "nav_hidden": false,
-      "nav_hidden_reason": null
+      "nav_hidden_reason": null,
+      "carried_forward": false,
+      "stale": false,
+      "dod_excluded": false,
+      "carry_reason": null,
+      "carried_from_asof": null,
+      "legs_present": 3
     },
     "H100_PCIe": {
       "model_key": "H100_PCIe",
@@ -101,7 +113,13 @@
         "cost": true
       },
       "nav_hidden": false,
-      "nav_hidden_reason": null
+      "nav_hidden_reason": null,
+      "carried_forward": false,
+      "stale": false,
+      "dod_excluded": false,
+      "carry_reason": null,
+      "carried_from_asof": null,
+      "legs_present": 3
     },
     "A100_80GB": {
       "model_key": "A100_80GB",
@@ -123,7 +141,13 @@
         "cost": true
       },
       "nav_hidden": true,
-      "nav_hidden_reason": "Hidden: together with other published values it would reveal a method value with n<3. The formula is unchanged; the NAV is still computed upstream from all methods."
+      "nav_hidden_reason": "Hidden: together with other published values it would reveal a method value with n<3. The formula is unchanged; the NAV is still computed upstream from all methods.",
+      "carried_forward": false,
+      "stale": false,
+      "dod_excluded": false,
+      "carry_reason": null,
+      "carried_from_asof": null,
+      "legs_present": 3
     },
     "A100_40GB": {
       "model_key": "A100_40GB",
@@ -145,7 +169,13 @@
         "cost": false
       },
       "nav_hidden": false,
-      "nav_hidden_reason": null
+      "nav_hidden_reason": null,
+      "carried_forward": false,
+      "stale": false,
+      "dod_excluded": false,
+      "carry_reason": null,
+      "carried_from_asof": null,
+      "legs_present": 1
     }
   },
   "small_sample_rule": {

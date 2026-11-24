@@ -100,6 +100,21 @@ OBSERVATION_ONLY_SOURCES = {
     "ebay_active": "无许可的在售搜索访问；不得进入官方计算。",
 }
 
+# Publication guards: a single official-source outage must not move a published NAV.
+# MIN_LEG_SAMPLE_N is the *internal completeness* threshold (a leg is present when
+# n >= 1). It is not the public small-sample hide rule (MIN_SAMPLE_N = 3 in
+# export_public.py). H100 SXM typically has market_n=1 and cost_n=1 on a normal
+# day, so a threshold of 3 would treat every normal day as degraded.
+MIN_LEG_SAMPLE_N = 1
+# Day-over-day |ΔNAV| / prior NAV above this, coinciding with an official source
+# failure, is treated as a bad print and carried forward.
+JUMP_GUARD_PCT = 0.25
+LEG_SPECS = (
+    ("market", "market_n", "market_usd"),
+    ("income", "income_n", "income_usd"),
+    ("cost", "cost_n", "cost_usd"),
+)
+
 
 def mark_observation_only(row: dict) -> dict:
     """Force official-leg flags off for unlicensed / watch-only sources."""
@@ -758,6 +773,21 @@ JOIN observations o
 WHERE e.event_date IS NOT NULL;
 """
     )
+    idx_existing = {r[1] for r in conn.execute("PRAGMA table_info(daily_index)").fetchall()}
+    idx_col_sql = {
+        "carried_forward": "INTEGER NOT NULL DEFAULT 0",
+        "stale": "INTEGER NOT NULL DEFAULT 0",
+        "carry_reason": "TEXT",
+        "carried_from_asof": "TEXT",
+        "legs_present": "INTEGER",
+        "official_source_ok_n": "INTEGER",
+        "raw_nav_indicative_usd": "REAL",
+        "failed_sources_json": "TEXT",
+        "index_run_id": "TEXT",
+    }
+    for col, typ in idx_col_sql.items():
+        if col not in idx_existing:
+            conn.execute(f"ALTER TABLE daily_index ADD COLUMN {col} {typ}")
     conn.commit()
 
 
@@ -1160,6 +1190,15 @@ CREATE TABLE IF NOT EXISTS daily_index (
     quality_flag TEXT,
     assumptions_json TEXT,
     breakdown_json TEXT,
+    carried_forward INTEGER NOT NULL DEFAULT 0,
+    stale INTEGER NOT NULL DEFAULT 0,
+    carry_reason TEXT,
+    carried_from_asof TEXT,
+    legs_present INTEGER,
+    official_source_ok_n INTEGER,
+    raw_nav_indicative_usd REAL,
+    failed_sources_json TEXT,
+    index_run_id TEXT,
     UNIQUE(asof_date_pt, model_key)
 );
 CREATE TABLE IF NOT EXISTS source_health (
@@ -2234,6 +2273,282 @@ def compute_index(observations, asof_date_pt, computed_at_utc, computed_at_pt):
     return rows
 
 
+def official_contributor_ids() -> set[str]:
+    """SOURCE_PLAN ids that can contribute to official M/I/C legs (not FX, not watch-only, not competitors)."""
+    out = set()
+    for src in SOURCE_PLAN:
+        sid = src["id"]
+        if sid == "fx_usd" or sid in OBSERVATION_ONLY_SOURCES:
+            continue
+        if competitor_exclusion_reason(sid, src.get("name"), src.get("url")):
+            continue
+        out.add(sid)
+    return out
+
+
+def official_source_ok_n(health: list[dict] | None) -> int:
+    official = official_contributor_ids()
+    n = 0
+    for h in health or []:
+        if h.get("source_id") in official and h.get("ok") and not h.get("competitor_excluded"):
+            n += 1
+    return n
+
+
+def failed_official_source_ids(health: list[dict] | None) -> list[str]:
+    official = official_contributor_ids()
+    failed = []
+    for h in health or []:
+        sid = h.get("source_id")
+        if sid not in official or h.get("competitor_excluded"):
+            continue
+        if not h.get("ok"):
+            failed.append(sid)
+    return failed
+
+
+def legs_present(row: dict) -> list[str]:
+    """Valuation approaches that meet MIN_LEG_SAMPLE_N. Composite has no M/I/C legs."""
+    if row.get("model_key") == "COMPOSITE":
+        return []
+    out = []
+    for name, nkey, vkey in LEG_SPECS:
+        n = row.get(nkey)
+        v = row.get(vkey)
+        try:
+            n_int = int(n) if n is not None else 0
+        except (TypeError, ValueError):
+            n_int = 0
+        if v is not None and n_int >= MIN_LEG_SAMPLE_N:
+            out.append(name)
+    return out
+
+
+def _is_carried_row(row: dict) -> bool:
+    v = row.get("carried_forward")
+    if v in (1, True, "1", "true"):
+        return True
+    return False
+
+
+def load_last_normal(conn: sqlite3.Connection, model_key: str, before_asof: str) -> Optional[dict]:
+    """Most recent non-carried daily_index row for model_key strictly before asof."""
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(daily_index)").fetchall()}
+    if "carried_forward" in cols:
+        q = (
+            "SELECT * FROM daily_index WHERE model_key=? AND asof_date_pt < ? "
+            "AND COALESCE(carried_forward, 0)=0 AND nav_indicative_usd IS NOT NULL "
+            "ORDER BY asof_date_pt DESC LIMIT 1"
+        )
+    else:
+        q = (
+            "SELECT * FROM daily_index WHERE model_key=? AND asof_date_pt < ? "
+            "AND nav_indicative_usd IS NOT NULL ORDER BY asof_date_pt DESC LIMIT 1"
+        )
+    row = conn.execute(q, (model_key, before_asof)).fetchone()
+    return dict(row) if row else None
+
+
+def _append_quality_flags(row: dict, *tags: str) -> None:
+    flags = [f for f in (row.get("quality_flag") or "").split(";") if f]
+    for tag in tags:
+        if tag not in flags:
+            flags.append(tag)
+    row["quality_flag"] = ";".join(flags)
+
+
+def _mark_carried(rec: dict, prior: dict, reasons: list[str], failed_ids: list[str]) -> None:
+    rec["carried_forward"] = 1
+    rec["stale"] = 1
+    rec["carried_from_asof"] = prior["asof_date_pt"]
+    rec["nav_indicative_usd"] = prior["nav_indicative_usd"]
+    reason = "; ".join(reasons)
+    if failed_ids:
+        reason += f"; failed_official_sources={failed_ids}"
+    rec["carry_reason"] = reason
+    _append_quality_flags(rec, "carried_forward", "stale")
+    try:
+        bd = json.loads(rec["breakdown_json"]) if rec.get("breakdown_json") else {}
+    except (TypeError, json.JSONDecodeError):
+        bd = {}
+    bd["publication_guard"] = {
+        "carried_forward": True,
+        "stale": True,
+        "carried_from_asof": prior["asof_date_pt"],
+        "carried_nav_usd": None if prior["nav_indicative_usd"] is None else round(float(prior["nav_indicative_usd"]), 2),
+        "raw_nav_usd": None if rec.get("raw_nav_indicative_usd") is None else round(float(rec["raw_nav_indicative_usd"]), 2),
+        "reason": rec["carry_reason"],
+        "failed_official_sources": failed_ids,
+    }
+    rec["breakdown_json"] = json.dumps(bd, ensure_ascii=False)
+
+
+def _init_guard_fields(rec: dict, official_ok: int, failed_ids: list[str], run_id: Optional[str]) -> None:
+    rec["raw_nav_indicative_usd"] = rec.get("nav_indicative_usd")
+    rec["official_source_ok_n"] = official_ok
+    rec["failed_sources_json"] = json.dumps(failed_ids, ensure_ascii=False)
+    rec["carried_forward"] = 0
+    rec["stale"] = 0
+    rec["carry_reason"] = None
+    rec["carried_from_asof"] = None
+    rec["index_run_id"] = run_id
+    if rec.get("model_key") == "COMPOSITE":
+        rec["legs_present"] = None
+    else:
+        rec["legs_present"] = len(legs_present(rec))
+
+
+def apply_publication_guards(
+    conn: sqlite3.Connection,
+    index_rows: list[dict],
+    health: list[dict] | None,
+    asof_date_pt: str,
+    run_id: Optional[str] = None,
+) -> list[dict]:
+    """Carry forward last normal NAV when today's print is degraded by missing legs or a jump with a source failure.
+
+    Does not write to the database. Composite is recomputed from published (possibly carried) model NAVs
+    so a degraded model value never enters the composite.
+    """
+    failed_ids = failed_official_source_ids(health)
+    official_ok = official_source_ok_n(health)
+    by_key = {r["model_key"]: dict(r) for r in index_rows}
+
+    any_model_carried = False
+    for key in MODEL_KEYS:
+        rec = by_key[key]
+        _init_guard_fields(rec, official_ok, failed_ids, run_id)
+        raw_nav = rec["raw_nav_indicative_usd"]
+        today_legs = legs_present(rec)
+        prior = load_last_normal(conn, key, asof_date_pt)
+        reasons = []
+        if prior is not None:
+            prior_legs = legs_present(prior)
+            if len(today_legs) < len(prior_legs):
+                reasons.append(
+                    f"leg_loss: today={today_legs or ['none']} prior={prior_legs} "
+                    f"(asof {prior['asof_date_pt']})"
+                )
+            prior_nav = prior.get("nav_indicative_usd")
+            if (
+                failed_ids
+                and raw_nav is not None
+                and prior_nav not in (None, 0)
+                and abs(float(raw_nav) - float(prior_nav)) / abs(float(prior_nav)) > JUMP_GUARD_PCT
+            ):
+                chg = (float(raw_nav) - float(prior_nav)) / float(prior_nav)
+                reasons.append(
+                    f"jump_guard: dod={chg:.1%} exceeds {JUMP_GUARD_PCT:.0%} with official source failure"
+                )
+        if reasons:
+            _mark_carried(rec, prior, reasons, failed_ids)
+            any_model_carried = True
+            log.warning(
+                "CARRY_FORWARD %s raw_nav=%s published_nav=%s from %s (%s)",
+                key, raw_nav, rec["nav_indicative_usd"], rec["carried_from_asof"], rec["carry_reason"],
+            )
+        by_key[key] = rec
+
+    comp = by_key.get("COMPOSITE")
+    if comp is not None:
+        _init_guard_fields(comp, official_ok, failed_ids, run_id)
+        raw_comp = comp["raw_nav_indicative_usd"]
+        pub_navs = [
+            by_key[k]["nav_indicative_usd"]
+            for k in MODEL_KEYS
+            if by_key[k].get("nav_indicative_usd") is not None
+        ]
+        mixed = (sum(pub_navs) / len(pub_navs)) if pub_navs else None
+        comp["nav_indicative_usd"] = mixed
+        try:
+            bd = json.loads(comp["breakdown_json"]) if comp.get("breakdown_json") else {}
+        except (TypeError, json.JSONDecodeError):
+            bd = {}
+        bd["components"] = {
+            k: None if by_key[k].get("nav_indicative_usd") is None else round(float(by_key[k]["nav_indicative_usd"]), 2)
+            for k in MODEL_KEYS
+        }
+        bd["n_models"] = len(pub_navs)
+        bd["composite_usd"] = None if mixed is None else round(float(mixed), 2)
+        bd["raw_composite_usd"] = None if raw_comp is None else round(float(raw_comp), 2)
+        reasons = []
+        carried_models = [k for k in MODEL_KEYS if _is_carried_row(by_key[k])]
+        prior_c = load_last_normal(conn, "COMPOSITE", asof_date_pt)
+        if carried_models:
+            reasons.append("component_carried:" + ",".join(carried_models))
+        if (
+            failed_ids
+            and mixed is not None
+            and prior_c is not None
+            and prior_c.get("nav_indicative_usd") not in (None, 0)
+            and abs(float(mixed) - float(prior_c["nav_indicative_usd"])) / abs(float(prior_c["nav_indicative_usd"])) > JUMP_GUARD_PCT
+        ):
+            chg = (float(mixed) - float(prior_c["nav_indicative_usd"])) / float(prior_c["nav_indicative_usd"])
+            reasons.append(
+                f"jump_guard: dod={chg:.1%} exceeds {JUMP_GUARD_PCT:.0%} with official source failure"
+            )
+            # A genuine composite jump with a source outage: fall back to last normal composite.
+            comp["nav_indicative_usd"] = prior_c["nav_indicative_usd"]
+            bd["composite_usd"] = round(float(prior_c["nav_indicative_usd"]), 2)
+        if reasons and prior_c is not None:
+            comp["breakdown_json"] = json.dumps(bd, ensure_ascii=False)
+            _mark_carried(comp, prior_c, reasons, failed_ids)
+            log.warning(
+                "CARRY_FORWARD COMPOSITE raw_nav=%s published_nav=%s (%s)",
+                raw_comp, comp["nav_indicative_usd"], comp["carry_reason"],
+            )
+        else:
+            comp["breakdown_json"] = json.dumps(bd, ensure_ascii=False)
+        by_key["COMPOSITE"] = comp
+
+    return [by_key.get(r["model_key"], r) for r in index_rows]
+
+
+def existing_official_source_ok_n(conn: sqlite3.Connection, existing: dict[str, dict]) -> Optional[int]:
+    vals = [
+        r.get("official_source_ok_n")
+        for r in existing.values()
+        if r.get("official_source_ok_n") is not None
+    ]
+    if vals:
+        return int(max(vals))
+    return None
+
+
+def same_day_run_is_worse(
+    existing: dict[str, dict],
+    new_rows: list[dict],
+    new_official_ok: int,
+    old_official_ok: Optional[int],
+) -> Optional[str]:
+    """Return a reason if the later same-asof run must not overwrite the earlier result."""
+    if old_official_ok is not None and new_official_ok < old_official_ok:
+        return f"fewer official sources ({new_official_ok} < {old_official_ok})"
+    worse = []
+    new_by = {r["model_key"]: r for r in new_rows}
+    for key in MODEL_KEYS:
+        if key not in existing or key not in new_by:
+            continue
+        old_legs = legs_present(existing[key])
+        new_legs = legs_present(new_by[key])
+        if len(new_legs) < len(old_legs):
+            worse.append(f"{key}: {new_legs or ['none']} < {old_legs}")
+    if worse:
+        return "fewer legs than earlier same-day run (" + "; ".join(worse) + ")"
+    return None
+
+
+def load_index_rows_for_date(conn: sqlite3.Connection, asof_date_pt: str) -> list[dict]:
+    rows = [dict(r) for r in conn.execute(
+        "SELECT * FROM daily_index WHERE asof_date_pt=? ORDER BY model_key",
+        (asof_date_pt,),
+    ).fetchall()]
+    # Keep MODEL_KEYS order then COMPOSITE, matching compute_index.
+    order = {k: i for i, k in enumerate(MODEL_KEYS + ["COMPOSITE"])}
+    rows.sort(key=lambda r: order.get(r["model_key"], 99))
+    return rows
+
+
 OBS_COLS = [
     "run_id", "snapshot_id", "snapshot_hash", "source_id", "source_name", "source_url",
     "observation_type", "sold_vs_listed", "model", "form_factor", "vram_gb", "condition",
@@ -2250,6 +2565,9 @@ IDX_COLS = [
     "market_usd", "income_usd", "cost_usd", "nav_indicative_usd",
     "market_n", "income_n", "cost_n", "rental_median_usd_per_hour", "new_card_usd",
     "quality_flag", "assumptions_json", "breakdown_json",
+    "carried_forward", "stale", "carry_reason", "carried_from_asof",
+    "legs_present", "official_source_ok_n", "raw_nav_indicative_usd",
+    "failed_sources_json", "index_run_id",
 ]
 
 
@@ -2261,13 +2579,37 @@ def insert_observations(conn, rows):
     conn.executemany(q, [[r.get(c) for c in OBS_COLS] for r in rows])
 
 
-def upsert_index(conn, rows):
+def upsert_index(conn, rows, health=None):
+    """Write daily_index, refusing to overwrite a better same-asof result.
+
+    A later run on the same asof_date_pt must not replace an earlier row when it
+    has fewer official sources or fewer valid valuation legs. Returns True if
+    rows were written, False if the earlier result was kept.
+    """
+    if not rows:
+        return True
+    asof = rows[0]["asof_date_pt"]
+    existing_rows = [dict(r) for r in conn.execute(
+        "SELECT * FROM daily_index WHERE asof_date_pt=?", (asof,)
+    ).fetchall()]
+    existing = {r["model_key"]: r for r in existing_rows}
+    if existing:
+        new_ok = official_source_ok_n(health)
+        old_ok = existing_official_source_ok_n(conn, existing)
+        reason = same_day_run_is_worse(existing, rows, new_ok, old_ok)
+        if reason:
+            log.warning(
+                "SAME_DAY_OVERWRITE_BLOCKED asof=%s: %s; keeping earlier daily_index",
+                asof, reason,
+            )
+            return False
     q = (
         "INSERT INTO daily_index (" + ",".join(IDX_COLS) + ") VALUES (" + ",".join(["?"] * len(IDX_COLS)) + ") "
         "ON CONFLICT(asof_date_pt, model_key) DO UPDATE SET "
         + ",".join(f"{c}=excluded.{c}" for c in IDX_COLS if c not in ("asof_date_pt", "model_key"))
     )
     conn.executemany(q, [[r.get(c) for c in IDX_COLS] for r in rows])
+    return True
 
 
 def write_outputs(conn, run_id, asof_date_pt, computed_at_pt, computed_at_utc, health, observations, index_rows, fx):
@@ -2333,6 +2675,19 @@ def write_outputs(conn, run_id, asof_date_pt, computed_at_pt, computed_at_utc, h
             "new_card_usd": r2(r["new_card_usd"]),
             "quality_flag": r["quality_flag"],
             "breakdown": json.loads(r["breakdown_json"]) if r.get("breakdown_json") else None,
+            "carried_forward": bool(r.get("carried_forward")),
+            "stale": bool(r.get("stale")),
+            "dod_excluded": bool(r.get("carried_forward") or r.get("stale")),
+            "carry_reason": r.get("carry_reason"),
+            "carried_from_asof": r.get("carried_from_asof"),
+            "legs_present": r.get("legs_present"),
+            "official_source_ok_n": r.get("official_source_ok_n"),
+            "raw_nav_indicative_usd": r2(r.get("raw_nav_indicative_usd")),
+            "failed_official_sources": (
+                json.loads(r["failed_sources_json"])
+                if r.get("failed_sources_json") else []
+            ),
+            "index_run_id": r.get("index_run_id"),
         }
         if r["model_key"] == "COMPOSITE":
             latest["composite"] = item
@@ -2356,6 +2711,13 @@ def write_outputs(conn, run_id, asof_date_pt, computed_at_pt, computed_at_utc, h
                     "market_usd": r2(p["market_usd"]),
                     "income_usd": r2(p["income_usd"]),
                     "cost_usd": r2(p["cost_usd"]),
+                    "carried_forward": bool(p.get("carried_forward")),
+                    "stale": bool(p.get("stale")),
+                    "dod_excluded": bool(p.get("carried_forward") or p.get("stale")),
+                    "carry_reason": p.get("carry_reason"),
+                    "carried_from_asof": p.get("carried_from_asof"),
+                    "legs_present": p.get("legs_present"),
+                    "raw_nav_indicative_usd": r2(p.get("raw_nav_indicative_usd")),
                 }
                 for p in pts
             ],
@@ -2461,6 +2823,13 @@ def run():
             health.append({"source_id": sid, "url": src["url"], "ok": False, "skipped": True,
                            "http_status": None, "error": "skipped (COMPUTENAV_SKIP_SOURCES)",
                            "observation_count": 0, "fetched_at_utc": None, "sha256": None})
+            conn.execute(
+                "INSERT INTO source_health (run_id,asof_date_pt,source_id,url,ok,http_status,error,observation_count,fetched_at_utc) "
+                "VALUES (?,?,?,?,?,?,?,?,?)",
+                (run_id, asof_date_pt, sid, src["url"], 0, None,
+                 "skipped (COMPUTENAV_SKIP_SOURCES)", 0, None),
+            )
+            conn.commit()
             continue
         rec = {
             "source_id": sid, "url": src["url"], "method": src.get("method", "GET"),
@@ -2539,8 +2908,15 @@ def run():
     computed_pt = to_pt(computed)
     observations = drop_competitor_observations(observations, context="pre-compute")
     index_rows = compute_index(observations, asof_date_pt, iso(computed), iso(computed_pt))
-    upsert_index(conn, index_rows)
+    index_rows = apply_publication_guards(conn, index_rows, health, asof_date_pt, run_id=run_id)
+    wrote = upsert_index(conn, index_rows, health=health)
     conn.commit()
+    # Always publish the rows actually stored for this asof (may be an earlier same-day run).
+    stored = load_index_rows_for_date(conn, asof_date_pt)
+    if stored:
+        if not wrote:
+            log.warning("publishing earlier same-day daily_index for asof=%s (later run not written)", asof_date_pt)
+        index_rows = stored
     latest, history, dashboard = write_outputs(
         conn, run_id, asof_date_pt, iso(computed_pt), iso(computed), health, observations, index_rows, fx
     )
@@ -2675,8 +3051,14 @@ def recompute_from_run(run_id: str) -> int:
             log.exception("could not reload FX snapshot; using rates stored on observations")
 
     index_rows = compute_index(raw_rows, asof_date_pt, iso(computed), iso(computed_pt))
-    upsert_index(conn, index_rows)
+    index_rows = apply_publication_guards(conn, index_rows, health, asof_date_pt, run_id=run_id)
+    wrote = upsert_index(conn, index_rows, health=health)
     conn.commit()
+    stored = load_index_rows_for_date(conn, asof_date_pt)
+    if stored:
+        if not wrote:
+            log.warning("publishing earlier same-day daily_index for asof=%s (recompute not written)", asof_date_pt)
+        index_rows = stored
     latest, history, dashboard = write_outputs(
         conn, run_id, asof_date_pt, iso(computed_pt), iso(computed), health, raw_rows, index_rows, fx
     )

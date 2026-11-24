@@ -1,11 +1,11 @@
 # ComputeNAV / AI NAV Index Methodology v0
 
-> **Public copy note:** This document is an English translation of the project's internal methodology_v0.md (2026-11-16 PT). To respect data licences, this public version removes the Vast.ai figures, the eBay asking prices relayed by Mulligan, and private storage paths. All prices are shown in USD only (non-USD sources are converted at the day's FX rate), and individual listing / price-list values in Section 4 are replaced by USD ranges over at least 3 observations. Everything else is unchanged in substance. The public dashboard's daily calculation follows the "source admission criteria" in Section 10 and **does not use Vast.ai data**. In addition, the public data does not publish any method value with fewer than 3 observations (see the repository README). High-school student research project. Indicative data only. Not investment advice.
+> **Public copy note:** This document is an English translation of the project's internal methodology_v0.md (2026-11-16 PT; section 9.1 added 2026-11-24 PT). To respect data licences, this public version removes the Vast.ai figures, the eBay asking prices relayed by Mulligan, and private storage paths. All prices are shown in USD only (non-USD sources are converted at the day's FX rate), and individual listing / price-list values in Section 4 are replaced by USD ranges over at least 3 observations. Everything else is unchanged in substance. The public dashboard's daily calculation follows the "source admission criteria" in Section 10 and **does not use Vast.ai data**. In addition, the public data does not publish any method value with fewer than 3 observations (see the repository README). High-school student research project. Indicative data only. Not investment advice.
 
 
 **Document status:** Draft for review; not an effective benchmark document  
 **Version:** v0.1-draft  
-**Date:** 2026-11-16 (Pacific Time, PT)  
+**Date:** 2026-11-16 (Pacific Time, PT); section 9.1 added 2026-11-24 PT  
 **Preparation note:** This document is based on same-day tests of public data sources from an isolated environment (HTTP GET/POST, no login and no circumvention). All prices and counts are the results captured that day. Listing prices not verified as transactions are always labelled "listed" and are never treated as realized transactions. Parameters that have not been calibrated are always labelled **to-be-calibrated**; no values are invented.
 
 ---
@@ -327,6 +327,14 @@ The daily pipeline has two non-overlapping stages:
 Any day's official NAV should be traceable to: (a) the list of normalized observations that entered the calculation and their weights; (b) the hashes of the corresponding raw snapshots; (c) the methodology version in force at the time. The index administrator does not modify archived raw snapshots. If a source later deletes a page, the archived snapshot still prevails, with a note that "the source page may have changed".
 
 The target location for v0 code and archives is storage controlled by the index administrator (the survey files for this round are kept in the project's private storage). A production retention period of no less than **seven years** is suggested (aligned with common benchmark governance practice and record-keeping periods in some issuers' governance documents); the final period is **to be confirmed by the committee**.
+
+
+### 9.1 Source-outage and jump publication guard
+
+A single official-source outage must not move a published NAV. For each model, the pipeline compares the number of valid valuation legs today (market / income / cost, each present when it has at least `MIN_LEG_SAMPLE_N = 1` official observation) with the most recent normal (non-carried) run. This completeness threshold is distinct from the public small-sample hide rule (`MIN_SAMPLE_N = 3` in `export_public.py`): H100 SXM typically has `market_n = 1` and `cost_n = 1` on a normal day, so a threshold of 3 would treat every normal day as degraded.
+
+If today is missing legs that the last normal run had — especially when only one approach remains — the degraded NAV is not published. The last normal NAV is carried forward, the point is marked `stale` / `carried_forward=true`, the missing legs and failed official sources are recorded, and the point is dropped from the day-over-day change calculation. The same carry-forward applies when a day-over-day move exceeds `JUMP_GUARD_PCT = 25%` and coincides with an official source failure (an official contributor in `SOURCE_PLAN` that is not observation-only and that failed or was skipped). The composite is never computed from a degraded model value: any carried model NAV is used in its place, and the composite itself is marked stale. A later run on the same as-of date must not overwrite an earlier, better result (more official sources, or more complete legs) in `daily_index` or in `history.json`.
+
 
 ---
 

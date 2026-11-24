@@ -36,6 +36,31 @@
   function $(id) { return document.getElementById(id); }
   function hiddenHTML() { return "Hidden"; }
   function smallHTML(n) { return "<span class='skip'>Insufficient sample (n=" + int(n) + ")</span>"; }
+  function isStale(obj) { return !!(obj && (obj.stale || obj.carried_forward)); }
+  function isDodExcluded(p) { return !!(p && (p.dod_excluded || p.stale || p.carried_forward)); }
+  function staleBadge(obj) {
+    if (!isStale(obj)) return "";
+    var tip = obj.carry_reason || (obj.carried_from_asof ? "Carried from " + obj.carried_from_asof : "Publication guard");
+    return "<span class='badge stale' title='" + esc(tip) + "'>Stale / carried forward</span>";
+  }
+  function lastComparable(H, key, before) {
+    var pts = ((H && H.series && H.series[key]) || {}).points || [];
+    var best = null;
+    pts.forEach(function (p) {
+      if (p && p.asof_date_pt && (!before || p.asof_date_pt < before)
+          && !isDodExcluded(p) && !p.nav_hidden && isNum(p.nav_indicative_usd)) {
+        best = p;
+      }
+    });
+    return best;
+  }
+  function dodHTML(cur, prev, excluded) {
+    if (excluded) return "<div class='dod skipped'>Day-over-day change omitted (stale / carried forward)</div>";
+    if (!isNum(cur) || !prev || !isNum(prev.nav_indicative_usd) || prev.nav_indicative_usd === 0) return "";
+    var chg = (cur - prev.nav_indicative_usd) / prev.nav_indicative_usd;
+    var sign = chg > 0 ? "+" : "";
+    return "<div class='dod'>" + sign + (Math.round(chg * 1000) / 10) + "% vs " + esc(prev.asof_date_pt) + "</div>";
+  }
 
   function getJSON(url) {
     return fetch(url + "?v=" + Date.now(), { cache: "no-store" }).then(function (r) {
@@ -66,11 +91,14 @@
     }).join("");
   }
 
-  function renderMetrics(L) {
+  function renderMetrics(L, H) {
+    var asof = L.asof_date_pt;
     var c = L.composite || {};
     var cHidden = !!c.nav_hidden;
-    var html = "<div class='metric primary" + (cHidden ? " warn" : "") + "'><div class='v'>" + (cHidden ? hiddenHTML() : usd(c.nav_indicative_usd)) +
-      "</div><div class='l'>" + esc(c.label || "Composite") + "</div><div class='d'>" +
+    var cStale = isStale(c);
+    var cDod = cHidden ? "" : dodHTML(c.nav_indicative_usd, lastComparable(H, "COMPOSITE", asof), isDodExcluded(c));
+    var html = "<div class='metric primary" + (cHidden || cStale ? " warn" : "") + "'><div class='v'>" + (cHidden ? hiddenHTML() : usd(c.nav_indicative_usd)) +
+      "</div><div class='l'>" + esc(c.label || "Composite") + (isStale(c) ? "<br>" + staleBadge(c) : "") + "</div>" + cDod + "<div class='d'>" +
       (cHidden && c.nav_hidden_reason ? esc(c.nav_hidden_reason) + "<br>" : "") +
       "Equal-weight mean of the sub-indices (" + int(c.n_models) + " models with a value); installed-base weights to be calibrated</div></div>";
     MODEL_KEYS.forEach(function (k) {
@@ -89,8 +117,10 @@
       if (small.length) detail += "<br>Not published (n&lt;3): " + esc(small.join(", "));
       var hidden = !!m.nav_hidden;
       if (hidden && m.nav_hidden_reason) detail = esc(m.nav_hidden_reason) + "<br>" + detail;
-      html += "<div class='metric" + (partial || hidden ? " warn" : "") + "'><div class='v'>" + (hidden ? hiddenHTML() : usd(m.nav_indicative_usd)) +
-        "</div><div class='l'>" + esc(m.label) + "</div><div class='d'>" + detail + "</div></div>";
+      var stale = isStale(m);
+      var dod = hidden ? "" : dodHTML(m.nav_indicative_usd, lastComparable(H, k, asof), isDodExcluded(m));
+      html += "<div class='metric" + (partial || hidden || stale ? " warn" : "") + "'><div class='v'>" + (hidden ? hiddenHTML() : usd(m.nav_indicative_usd)) +
+        "</div><div class='l'>" + esc(m.label) + (stale ? "<br>" + staleBadge(m) : "") + "</div>" + dod + "<div class='d'>" + detail + "</div></div>";
     });
     $("metrics").innerHTML = html;
   }
@@ -103,7 +133,9 @@
       "no_official_rentals": "no official rents",
       "no_new_card_anchor": "no new-card anchor",
       "income_assumptions=to-be-calibrated": "income parameters to be calibrated",
-      "cost_age_fraction=to-be-calibrated": "cost remaining-value factor to be calibrated"
+      "cost_age_fraction=to-be-calibrated": "cost remaining-value factor to be calibrated",
+      "carried_forward": "stale / carried forward",
+      "stale": "stale / carried forward"
     };
     return q.split(";").map(function (t) { return map[t] || t; }).join("; ");
   }
@@ -115,7 +147,8 @@
       var m = (L.models || {})[k] || {};
       var ins = m.insufficient_sample || {};
       function leg(name, v, d) { return ins[name] ? smallHTML(m[name + "_n"]) : usd(v, d); }
-      return [esc(m.label || k), m.nav_hidden ? "<span class='skip'>Hidden</span>" : usd(m.nav_indicative_usd),
+      var navCell = (m.nav_hidden ? "<span class='skip'>Hidden</span>" : usd(m.nav_indicative_usd)) + staleBadge(m);
+      return [esc(m.label || k), navCell,
         leg("market", m.market_usd), int(m.market_n), leg("income", m.income_usd),
         leg("income", m.rental_median_usd_per_hour, 4), int(m.income_n),
         leg("cost", m.cost_usd), leg("cost", m.new_card_usd), int(m.cost_n), esc(qualityText(m.quality_flag))];
@@ -138,8 +171,12 @@
     var series = keys.map(function (k) {
       var s = (H.series || {})[k] || { points: [] };
       var byDate = {};
-      (s.points || []).forEach(function (p) { byDate[p.asof_date_pt] = p.nav_indicative_usd; });
-      return { key: k, label: s.label || k, values: dates.map(function (d) { return isNum(byDate[d]) ? byDate[d] : null; }) };
+      (s.points || []).forEach(function (p) { byDate[p.asof_date_pt] = p; });
+      return {
+        key: k, label: s.label || k,
+        values: dates.map(function (d) { var p = byDate[d]; var v = p && p.nav_indicative_usd; return isNum(v) ? v : null; }),
+        stale: dates.map(function (d) { return isDodExcluded(byDate[d]); })
+      };
     });
     var all = [];
     series.forEach(function (s) { s.values.forEach(function (v) { if (isNum(v)) all.push(v); }); });
@@ -170,7 +207,12 @@
         if (p.length > 1) svg += "<polyline fill='none' stroke='" + col + "' stroke-width='" + (s.key === "COMPOSITE" ? 3 : 2) + "' points='" + p.join(" ") + "'/>";
       });
       s.values.forEach(function (v, i) {
-        if (isNum(v)) svg += "<circle cx='" + x(i) + "' cy='" + y(v) + "' r='4' fill='" + col + "'><title>" + esc(s.label) + " " + esc(dates[i]) + ": " + usd(v) + "</title></circle>";
+        if (isNum(v)) {
+          var stalePt = s.stale && s.stale[i];
+          var title = esc(s.label) + " " + esc(dates[i]) + ": " + usd(v) + (stalePt ? " (stale / carried forward)" : "");
+          if (stalePt) svg += "<circle cx='" + x(i) + "' cy='" + y(v) + "' r='5' fill='#fff' stroke='" + col + "' stroke-width='2'><title>" + title + "</title></circle>";
+          else svg += "<circle cx='" + x(i) + "' cy='" + y(v) + "' r='4' fill='" + col + "'><title>" + title + "</title></circle>";
+        }
       });
     });
     svg += "</svg>";
@@ -179,7 +221,7 @@
       var last = null;
       for (var i = s.values.length - 1; i >= 0; i--) if (isNum(s.values[i])) { last = s.values[i]; break; }
       return "<span style='--c:" + (COLORS[s.key] || "#888") + "'>" + esc(s.label) + " (latest " + usd(last) + ")</span>";
-    }).join("") + "<span class='note' style='--c:transparent'>" + dates.length + " day(s) · missing or hidden points are not interpolated</span>";
+    }).join("") + "<span class='note' style='--c:transparent'>" + dates.length + " day(s) · missing or hidden points are not interpolated · hollow markers are stale / carried forward</span>";
   }
 
   function renderAssumptions(L) {
@@ -222,7 +264,7 @@
 
   Promise.all([getJSON("data/latest.json"), getJSON("data/history.json")]).then(function (r) {
     var L = r[0], H = r[1];
-    renderProps(L); renderMetrics(L); renderBreakdown(L); renderSmallSampleNote(L); renderChart(H);
+    renderProps(L); renderMetrics(L, H); renderBreakdown(L); renderSmallSampleNote(L); renderChart(H);
     renderAssumptions(L); renderHealth(L); renderLicensing(L);
     document.body.setAttribute("data-rendered", "1");
   }).catch(function (e) {

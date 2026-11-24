@@ -30,8 +30,16 @@ Rules (see README "Data licensing"):
     registered name of any source / observation of the run, or of any public
     record, matches Silicon Data / Ornn / SemiAnalysis / Compute Exchange, the
     export aborts. Free text (errors, notes) is not scanned.
+  * Publication-guard fields from the private latest (carried_forward, stale,
+    dod_excluded, carry_reason, carried_from_asof, legs_present) are copied into
+    public latest.json and history.json. raw_nav_indicative_usd is never
+    published (it is the pre-carry indicative value and is forbidden in public
+    files). legs_present is the count of internally complete legs (n >= 1), not
+    the public n<3 hide rule.
   * history.json is the long-term public record: it is read from the repo,
     today's point is upserted (keyed by asof_date_pt), and it is written back.
+    A same-asof_date upsert is refused when the new point is stale / carried
+    forward or has fewer internally complete legs than the point already stored.
     nav.db is NOT needed for continuity.
 """
 from __future__ import annotations
@@ -300,6 +308,67 @@ def assert_small_sample(latest_pub: dict, hist: dict) -> None:
         check_set(f"history[{d}]", pts, cp.get("nav_indicative_usd") if cp else None)
 
 
+
+def _as_bool(v) -> bool:
+    if v in (None, False, 0, "0", ""):
+        return False
+    return bool(v)
+
+
+def _leg_count(src: dict) -> int:
+    """Count internally complete legs (n >= 1). Uses legs_present when present."""
+    lp = src.get("legs_present")
+    if lp is not None:
+        try:
+            return int(lp)
+        except (TypeError, ValueError):
+            pass
+    n = 0
+    for leg in LEGS:
+        nv = src.get(f"{leg}_n")
+        try:
+            n_int = int(nv) if nv is not None else 0
+        except (TypeError, ValueError):
+            n_int = 0
+        if n_int >= 1:
+            n += 1
+    return n
+
+
+def extract_guard_fields(src: dict, *, composite: bool = False) -> dict:
+    """Public publication-guard fields. Never includes raw_nav_indicative_usd."""
+    stale = _as_bool(src.get("stale"))
+    carried = _as_bool(src.get("carried_forward"))
+    dod = _as_bool(src.get("dod_excluded")) or stale or carried
+    return {
+        "carried_forward": carried,
+        "stale": stale,
+        "dod_excluded": dod,
+        "carry_reason": src.get("carry_reason"),
+        "carried_from_asof": src.get("carried_from_asof"),
+        "legs_present": None if composite else _leg_count(src),
+    }
+
+
+def point_is_stale(pt: dict) -> bool:
+    return bool(pt.get("stale") or pt.get("carried_forward") or pt.get("dod_excluded"))
+
+
+def should_refuse_overwrite(existing: dict | None, new: dict) -> bool:
+    """Refuse to replace a same-asof point with a stale or fewer-legs point."""
+    if not existing:
+        return False
+    if point_is_stale(new):
+        return True
+    # Composite public points have no M/I/C legs; stale is the only comparison.
+    new_has_legs = new.get("legs_present") is not None or any(f"{leg}_n" in new for leg in LEGS)
+    old_has_legs = existing.get("legs_present") is not None or any(f"{leg}_n" in existing for leg in LEGS)
+    if new_has_legs or old_has_legs:
+        if _leg_count(new) < _leg_count(existing):
+            return True
+    return False
+
+
 def build_latest(priv: dict, allow_observation_only: bool = False) -> dict:
     health = priv.get("source_health") or []
     obs_only = {o.get("source_id") for o in (priv.get("observation_only_sources") or []) if isinstance(o, dict)}
@@ -337,6 +406,7 @@ def build_latest(priv: dict, allow_observation_only: bool = False) -> dict:
             "new_card_usd": m.get("new_card_usd"),
             "quality_flag": m.get("quality_flag"),
         }
+        models[key].update(extract_guard_fields(m, composite=False))
     ns = {k: {leg: (models[k] or {}).get(f"{leg}_n") for leg in LEGS} for k in MODEL_KEYS}
     plan = plan_masking(ns)
     for k in MODEL_KEYS:
@@ -386,6 +456,7 @@ def build_latest(priv: dict, allow_observation_only: bool = False) -> dict:
             "nav_hidden_reason": COMPOSITE_HIDDEN_REASON if comp_hidden else None,
             "n_models": comp_bd.get("n_models"),
             "quality_flag": comp.get("quality_flag"),
+            **extract_guard_fields(comp, composite=True),
         },
         "models": models,
         "small_sample_rule": {
@@ -405,6 +476,26 @@ def build_latest(priv: dict, allow_observation_only: bool = False) -> dict:
     }
 
 
+def _history_point(key: str, latest_pub: dict) -> dict:
+    date = latest_pub["asof_date_pt"]
+    if key == "COMPOSITE":
+        src = latest_pub["composite"]
+        pt = {"asof_date_pt": date, "computed_at_pt": latest_pub["computed_at_pt"],
+              "nav_indicative_usd": src.get("nav_indicative_usd"),
+              "nav_hidden": bool(src.get("nav_hidden"))}
+    else:
+        src = latest_pub["models"].get(key) or {}
+        pt = {"asof_date_pt": date, "computed_at_pt": latest_pub["computed_at_pt"],
+              "nav_indicative_usd": src.get("nav_indicative_usd"),
+              "market_usd": src.get("market_usd"), "income_usd": src.get("income_usd"),
+              "cost_usd": src.get("cost_usd"),
+              "market_n": src.get("market_n"), "income_n": src.get("income_n"), "cost_n": src.get("cost_n"),
+              "insufficient_sample": src.get("insufficient_sample"),
+              "nav_hidden": bool(src.get("nav_hidden"))}
+    pt.update(extract_guard_fields(src, composite=(key == "COMPOSITE")))
+    return pt
+
+
 def upsert_history(hist: dict | None, latest_pub: dict) -> dict:
     if not hist:
         hist = {"schema_version": SCHEMA_VERSION, "series": {}, "dates": []}
@@ -412,27 +503,29 @@ def upsert_history(hist: dict | None, latest_pub: dict) -> dict:
     date = latest_pub["asof_date_pt"]
     if not date:
         raise SystemExit("latest has no asof_date_pt")
+    new_pts = {key: _history_point(key, latest_pub) for key in SERIES_KEYS}
+    existing = {}
+    for key in SERIES_KEYS:
+        s = hist["series"].setdefault(key, {"label": LABELS_EN[key], "points": []})
+        existing[key] = next((p for p in s.get("points", []) if p.get("asof_date_pt") == date), None)
+    refused = [key for key in SERIES_KEYS if should_refuse_overwrite(existing[key], new_pts[key])]
+    if refused and any(existing[k] is not None for k in SERIES_KEYS):
+        reasons = []
+        for key in refused:
+            new, old = new_pts[key], existing[key]
+            if point_is_stale(new):
+                reasons.append(f"{key}: new point is stale/carried_forward")
+            elif _leg_count(new) < _leg_count(old or {}):
+                reasons.append(f"{key}: fewer legs ({_leg_count(new)} < {_leg_count(old)})")
+        print("history upsert refused for " + date + " (" + "; ".join(reasons)
+              + "); keeping the earlier same-asof_date points", file=sys.stderr)
+        return hist
     for key in SERIES_KEYS:
         s = hist["series"].setdefault(key, {"label": LABELS_EN[key], "points": []})
         s.pop("label_en", None)
-        if key == "COMPOSITE":
-            src = latest_pub["composite"]
-            pt = {"asof_date_pt": date, "computed_at_pt": latest_pub["computed_at_pt"],
-                  "nav_indicative_usd": src.get("nav_indicative_usd"),
-                  "nav_hidden": bool(src.get("nav_hidden"))}
-            s["label"] = LABELS_EN[key]
-        else:
-            src = latest_pub["models"].get(key) or {}
-            pt = {"asof_date_pt": date, "computed_at_pt": latest_pub["computed_at_pt"],
-                  "nav_indicative_usd": src.get("nav_indicative_usd"),
-                  "market_usd": src.get("market_usd"), "income_usd": src.get("income_usd"),
-                  "cost_usd": src.get("cost_usd"),
-                  "market_n": src.get("market_n"), "income_n": src.get("income_n"), "cost_n": src.get("cost_n"),
-                  "insufficient_sample": src.get("insufficient_sample"),
-                  "nav_hidden": bool(src.get("nav_hidden"))}
-            s["label"] = LABELS_EN[key]
+        s["label"] = LABELS_EN[key]
         pts = [p for p in s.get("points", []) if p.get("asof_date_pt") != date]
-        pts.append(pt)
+        pts.append(new_pts[key])
         s["points"] = sorted(pts, key=lambda p: p["asof_date_pt"])
     hist["dates"] = sorted({p["asof_date_pt"] for s in hist["series"].values() for p in s["points"]})
     hist["generated_at_pt"] = latest_pub["computed_at_pt"]
@@ -440,7 +533,19 @@ def upsert_history(hist: dict | None, latest_pub: dict) -> dict:
     return hist
 
 
-FORBIDDEN_KEYS = {"observations", "raw_label", "snapshot_hash", "values_usd", "source_url", "sha256", "path"}
+def annotate_history_guards(hist: dict) -> dict:
+    """Fill missing publication-guard fields on existing history points (defaults: not stale)."""
+    for key, s in (hist.get("series") or {}).items():
+        for p in s.get("points") or []:
+            fields = extract_guard_fields(p, composite=(key == "COMPOSITE"))
+            for k, v in fields.items():
+                if k not in p:
+                    p[k] = v
+    return hist
+
+
+
+FORBIDDEN_KEYS = {"observations", "raw_label", "snapshot_hash", "values_usd", "source_url", "sha256", "path", "raw_nav_indicative_usd", "raw_nav_usd", "publication_guard"}
 
 
 def assert_clean(obj, where="root"):
@@ -481,6 +586,7 @@ def main(argv=None):
     hp = out / "history.json"
     hist = json.loads(hp.read_text()) if hp.exists() else None
     hist = upsert_history(hist, pub)
+    hist = annotate_history_guards(hist)
     assert_clean(pub)
     assert_clean(hist)
     assert_small_sample(pub, hist)
