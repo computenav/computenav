@@ -1,16 +1,16 @@
 {
   "schema_version": 2,
   "asof_date_pt": "2026-11-25",
-  "computed_at_pt": "2026-11-25T03:29:38.376865-08:00",
-  "computed_at_utc": "2026-11-25T11:29:38.376865+00:00",
-  "run_id": "20261125T032926_PT",
+  "computed_at_pt": "2026-11-25T13:41:37.375122-08:00",
+  "computed_at_utc": "2026-11-25T21:41:37.375122+00:00",
+  "run_id": "20261125T134116_PT",
   "disclaimer": "High-school student research project. Indicative data only, no sold transactions yet; income/cost parameters are placeholders to be calibrated. Not an official index. Not investment advice.",
   "sold_count_today": 0,
-  "observation_count": 80,
+  "observation_count": 123,
   "official_observation_counts": {
     "market": 6,
-    "income": 27,
-    "cost_new": 4
+    "income": 32,
+    "cost_new": 5
   },
   "fx": {
     "source": "https://www.exchangerate-api.com (https://www.exchangerate-api.com/docs/free)",
@@ -39,7 +39,7 @@
       "book_life_note": "Placeholder: the straight-line life uses IREN's 5-year accounting life for pledged GPUs as a scenario anchor (CoreWeave uses 6 years for compute equipment). The official life is to be calibrated.",
       "unknown_age_remaining_fraction": 0.5,
       "age_note": "Placeholder: used observations generally lack age, so the cost approach uses a 50% remaining-value factor (\"5-year straight line, midpoint for unknown age\"). Not a calibrated residual curve.",
-      "new_price_source": "Genius HPC \"New From\" prices on the same page (ex-VAT dealer starting prices in a non-USD currency, converted to USD at the daily FX rate) are preferred. These are not NVIDIA MSRP and not US channel prices."
+      "new_price_source": "Genius HPC \"New From\" prices on the same page (ex-VAT dealer starting prices in a non-USD currency, converted to USD at the daily FX rate) are preferred. The provisional MI300X cost-approach anchor is the single-module \"From\" price (low end of the range) in a public dealer catalogue. These are not NVIDIA or AMD MSRP and not US channel prices."
     },
     "market": {
       "sold_weight": "n/a (sold=0)",
@@ -47,16 +47,25 @@
       "aggregator": "unweighted median (weights to-be-calibrated)"
     },
     "composite": {
-      "rule": "Equal-weight average of the four sub-indices (installed-base weights to be calibrated). Each sub-index's indicative NAV is the equal-weight average of the market/income/cost values available that day (method weights to be calibrated)."
+      "rule": "Equal-weight average of the four NVIDIA sub-indices (H100 SXM / H100 PCIe / A100 80GB / A100 40GB; installed-base weights to be calibrated). AMD Instinct MI300X is a separate sub-index and is not part of the composite, so the composite history stays continuous. Each sub-index's indicative NAV is the equal-weight average of the market/income/cost values available that day (method weights to be calibrated)."
     }
   },
   "composite": {
-    "label": "Composite (equal-weight, to be calibrated)",
+    "label": "Composite (equal-weight of the four NVIDIA models, to be calibrated)",
     "nav_indicative_usd": null,
     "nav_hidden": true,
     "nav_hidden_reason": "Hidden: the composite is the equal-weight mean of the model NAVs; publishing it would reveal a hidden model NAV and therefore a method value with n<3.",
     "n_models": 4,
-    "quality_flag": "equal_weight_of_four_models;installed_base_weights=to-be-calibrated;sold_n=0",
+    "members": [
+      "H100_SXM",
+      "H100_PCIe",
+      "A100_80GB",
+      "A100_40GB"
+    ],
+    "excluded_subindices": [
+      "MI300X"
+    ],
+    "quality_flag": "equal_weight_of_four_nvidia_models;mi300x_excluded_from_composite;installed_base_weights=to-be-calibrated;sold_n=0",
     "carried_forward": false,
     "stale": false,
     "dod_excluded": false,
@@ -79,6 +88,8 @@
       "rental_median_usd_per_hour": 3.9492,
       "new_card_usd": null,
       "quality_flag": "sold_n=0;income_assumptions=to-be-calibrated;cost_age_fraction=to-be-calibrated",
+      "in_composite": true,
+      "separate_subindex": false,
       "carried_forward": false,
       "stale": false,
       "dod_excluded": false,
@@ -107,6 +118,8 @@
       "rental_median_usd_per_hour": 2.5,
       "new_card_usd": null,
       "quality_flag": "sold_n=0;income_assumptions=to-be-calibrated;cost_age_fraction=to-be-calibrated",
+      "in_composite": true,
+      "separate_subindex": false,
       "carried_forward": false,
       "stale": false,
       "dod_excluded": false,
@@ -126,15 +139,17 @@
       "label": "A100 80GB",
       "nav_indicative_usd": null,
       "market_usd": 6922.02,
-      "income_usd": 14578.21,
+      "income_usd": 14786.47,
       "cost_usd": null,
       "market_n": 3,
       "income_n": 9,
       "cost_n": 2,
       "legs_used": 3,
-      "rental_median_usd_per_hour": 1.4,
+      "rental_median_usd_per_hour": 1.42,
       "new_card_usd": null,
       "quality_flag": "sold_n=0;income_assumptions=to-be-calibrated;cost_age_fraction=to-be-calibrated",
+      "in_composite": true,
+      "separate_subindex": false,
       "carried_forward": false,
       "stale": false,
       "dod_excluded": false,
@@ -163,6 +178,8 @@
       "rental_median_usd_per_hour": 1.99,
       "new_card_usd": null,
       "quality_flag": "no_official_listings;sold_n=0;no_new_card_anchor;income_assumptions=to-be-calibrated;cost_age_fraction=to-be-calibrated",
+      "in_composite": true,
+      "separate_subindex": false,
       "carried_forward": false,
       "stale": false,
       "dod_excluded": false,
@@ -176,8 +193,49 @@
       },
       "nav_hidden": false,
       "nav_hidden_reason": null
+    },
+    "MI300X": {
+      "model_key": "MI300X",
+      "label": "AMD Instinct MI300X (separate sub-index, not in composite)",
+      "nav_indicative_usd": null,
+      "market_usd": null,
+      "income_usd": 31134.89,
+      "cost_usd": null,
+      "market_n": 0,
+      "income_n": 5,
+      "cost_n": 1,
+      "legs_used": 2,
+      "rental_median_usd_per_hour": 2.99,
+      "new_card_usd": null,
+      "quality_flag": "no_official_listings;sold_n=0;income_assumptions=to-be-calibrated;cost_age_fraction=to-be-calibrated",
+      "in_composite": false,
+      "separate_subindex": true,
+      "carried_forward": false,
+      "stale": false,
+      "dod_excluded": false,
+      "carry_reason": null,
+      "carried_from_asof": null,
+      "legs_present": 2,
+      "insufficient_sample": {
+        "market": false,
+        "income": false,
+        "cost": true
+      },
+      "nav_hidden": true,
+      "nav_hidden_reason": "Hidden: together with other published values it would reveal a method value with n<3. The formula is unchanged; the NAV is still computed upstream from all methods.",
+      "market_note": "Insufficient samples (no dealer listings or sold transactions today)",
+      "income_note": "Parameters to be calibrated (placeholder assumptions)"
     }
   },
+  "composite_members": [
+    "H100_SXM",
+    "H100_PCIe",
+    "A100_80GB",
+    "A100_40GB"
+  ],
+  "separate_subindices": [
+    "MI300X"
+  ],
   "small_sample_rule": {
     "min_n": 3,
     "text": "Any method leg with n<3 is published as null with its n and insufficient_sample=true; derived values (rent median, new-card anchor) are hidden too. NAV and composite are computed upstream from all legs (formula unchanged) but are hidden (nav_hidden=true) if publishing them would let a hidden leg be backed out."
@@ -422,6 +480,116 @@
       "role": "licence_restricted",
       "observation_only": false,
       "error": "skipped (COMPUTENAV_SKIP_SOURCES)"
+    },
+    {
+      "source_id": "genius_instinct_catalog",
+      "ok": true,
+      "skipped": false,
+      "http_status": 200,
+      "observation_count": 30,
+      "role": "collected",
+      "observation_only": false,
+      "error": null
+    },
+    {
+      "source_id": "tensorwave",
+      "ok": true,
+      "skipped": false,
+      "http_status": 200,
+      "observation_count": 4,
+      "role": "collected",
+      "observation_only": false,
+      "error": null
+    },
+    {
+      "source_id": "hotaisle",
+      "ok": true,
+      "skipped": false,
+      "http_status": 200,
+      "observation_count": 2,
+      "role": "collected",
+      "observation_only": false,
+      "error": null
+    },
+    {
+      "source_id": "oracle_mi300x",
+      "ok": true,
+      "skipped": false,
+      "http_status": 200,
+      "observation_count": 1,
+      "role": "collected",
+      "observation_only": false,
+      "error": null
+    },
+    {
+      "source_id": "azure_mi300x",
+      "ok": true,
+      "skipped": false,
+      "http_status": 200,
+      "observation_count": 5,
+      "role": "collected",
+      "observation_only": false,
+      "error": null
+    },
+    {
+      "source_id": "serverbuyback_index",
+      "ok": true,
+      "skipped": false,
+      "http_status": 200,
+      "observation_count": 1,
+      "role": "cross_check_only",
+      "observation_only": false,
+      "error": null
+    },
+    {
+      "source_id": "evelltech_mi300x",
+      "ok": false,
+      "skipped": false,
+      "http_status": 403,
+      "observation_count": 0,
+      "role": "collected",
+      "observation_only": false,
+      "error": "HTTPError 403 Forbidden"
+    },
+    {
+      "source_id": "elipic_mi300x",
+      "ok": false,
+      "skipped": false,
+      "http_status": 500,
+      "observation_count": 0,
+      "role": "collected",
+      "observation_only": false,
+      "error": "HTTPError 500 Internal Server Error"
+    },
+    {
+      "source_id": "vultr_pricing",
+      "ok": false,
+      "skipped": false,
+      "http_status": 403,
+      "observation_count": 0,
+      "role": "collected",
+      "observation_only": false,
+      "error": "HTTPError 403 Forbidden"
+    },
+    {
+      "source_id": "ebay_sold_mi300x",
+      "ok": false,
+      "skipped": true,
+      "http_status": null,
+      "observation_count": 0,
+      "role": "licence_restricted",
+      "observation_only": false,
+      "error": "skipped (COMPUTENAV_SKIP_SOURCES)"
+    },
+    {
+      "source_id": "ebay_active_mi300x",
+      "ok": false,
+      "skipped": true,
+      "http_status": null,
+      "observation_count": 0,
+      "role": "licence_restricted",
+      "observation_only": false,
+      "error": "skipped (COMPUTENAV_SKIP_SOURCES)"
     }
   ],
   "licensing": {
@@ -441,6 +609,14 @@
       {
         "source_id": "ebay_active",
         "reason": "eBay: no licensed API access; ToS restricts scraping"
+      },
+      {
+        "source_id": "ebay_sold_mi300x",
+        "reason": "eBay (MI300X search): no licensed API access; ToS restricts scraping / reuse of sold comps"
+      },
+      {
+        "source_id": "ebay_active_mi300x",
+        "reason": "eBay (MI300X search): no licensed API access; ToS restricts scraping"
       }
     ],
     "cross_check_only_not_published": [
@@ -459,6 +635,10 @@
       {
         "source_id": "serverpartdeals",
         "reason": "unavailable 8-GPU server listing; weight 0"
+      },
+      {
+        "source_id": "serverbuyback_index",
+        "reason": "broker's published used-price range (not a transaction or executable listing); observation only, weight 0"
       }
     ],
     "note": "Public data contains only per-model aggregates (indicative NAV, method legs, counts, medians). No listing-level observations or per-source raw prices. Per methodology section 10, Vast.ai, eBay, Clustermelt and Mulligan are excluded from the official calculation; the daily CI does not fetch Vast.ai or eBay."
