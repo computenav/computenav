@@ -68,7 +68,20 @@ jobs:
         if: github.event_name != 'push'
         env:
           COMPUTENAV_DATA_DIR: ${{ runner.temp }}/computenav-private
-        run: python pipeline/run_daily.py
+        # Actions logs of a public repo are public. run_daily.py logs every leg
+        # value (including legs hidden by the n<3 rule), so its full log stays
+        # in RUNNER_TEMP; only WARNING/ERROR lines are echoed, with decimal
+        # numbers masked.
+        run: |
+          mkdir -p "$RUNNER_TEMP/computenav-log"
+          set +e
+          python pipeline/run_daily.py > "$RUNNER_TEMP/computenav-log/run_daily.log" 2>&1
+          rc=$?
+          set -e
+          grep -E " (WARNING|ERROR|CRITICAL) |Traceback|Error:" "$RUNNER_TEMP/computenav-log/run_daily.log" \
+            | sed -E 's/[0-9][0-9,]*\.[0-9]+/<num>/g' || true
+          echo "run_daily.py exit code: $rc ($(wc -l < "$RUNNER_TEMP/computenav-log/run_daily.log") log lines kept private)"
+          exit $rc
 
       - name: Export public aggregated JSON
         if: github.event_name != 'push'
