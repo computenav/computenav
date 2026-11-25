@@ -213,7 +213,7 @@
         },
         {
           "asof_date_pt": "2026-11-25",
-          "computed_at_pt": "2026-11-25T13:41:37.375122-08:00",
+          "computed_at_pt": "2026-11-25T13:43:28.287695-08:00",
           "nav_indicative_usd": 19735.02,
           "market_usd": null,
           "income_usd": 41123.05,
@@ -448,7 +448,7 @@
         },
         {
           "asof_date_pt": "2026-11-25",
-          "computed_at_pt": "2026-11-25T13:41:37.375122-08:00",
+          "computed_at_pt": "2026-11-25T13:43:28.287695-08:00",
           "nav_indicative_usd": 16652.86,
           "market_usd": null,
           "income_usd": 26032.52,
@@ -683,7 +683,7 @@
         },
         {
           "asof_date_pt": "2026-11-25",
-          "computed_at_pt": "2026-11-25T13:41:37.375122-08:00",
+          "computed_at_pt": "2026-11-25T13:43:28.287695-08:00",
           "nav_indicative_usd": null,
           "market_usd": 6922.02,
           "income_usd": 14786.47,
@@ -918,7 +918,7 @@
         },
         {
           "asof_date_pt": "2026-11-25",
-          "computed_at_pt": "2026-11-25T13:41:37.375122-08:00",
+          "computed_at_pt": "2026-11-25T13:43:28.287695-08:00",
           "nav_indicative_usd": 20721.89,
           "market_usd": null,
           "income_usd": 20721.89,
@@ -1054,7 +1054,7 @@
         },
         {
           "asof_date_pt": "2026-11-25",
-          "computed_at_pt": "2026-11-25T13:41:37.375122-08:00",
+          "computed_at_pt": "2026-11-25T13:43:28.287695-08:00",
           "nav_indicative_usd": null,
           "nav_hidden": true,
           "carried_forward": false,
@@ -1071,7 +1071,7 @@
       "points": [
         {
           "asof_date_pt": "2026-11-25",
-          "computed_at_pt": "2026-11-25T13:41:37.375122-08:00",
+          "computed_at_pt": "2026-11-25T13:43:28.287695-08:00",
           "nav_indicative_usd": null,
           "market_usd": null,
           "income_usd": 31134.89,
@@ -1107,5 +1107,5 @@
     "2026-11-24",
     "2026-11-25"
   ],
-  "generated_at_pt": "2026-11-25T13:41:37.375122-08:00"
+  "generated_at_pt": "2026-11-25T13:43:28.287695-08:00"
 }
