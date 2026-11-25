@@ -39,7 +39,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  COMPUTENAV_SKIP_SOURCES: vast_public_feed,vast_bundles,ebay_sold,ebay_active
+  COMPUTENAV_SKIP_SOURCES: vast_public_feed,vast_bundles,ebay_sold,ebay_active,ebay_sold_mi300x,ebay_active_mi300x
   TZ: America/Los_Angeles
 
 jobs:
@@ -80,8 +80,15 @@ jobs:
       - name: Render methodology page
         run: python pipeline/render_methodology.py
 
-      - name: Check public files (USD only, English only)
-        run: python pipeline/check_public.py
+      - name: Check public files (USD only, English only, no hidden n<3 values)
+        env:
+          PRIV_LATEST: ${{ runner.temp }}/computenav-private/output/latest.json
+        run: |
+          if [ -f "$PRIV_LATEST" ]; then
+            python pipeline/check_public.py --private-latest "$PRIV_LATEST"
+          else
+            python pipeline/check_public.py
+          fi
 
       - name: Verify nothing private is in the site folder
         run: |

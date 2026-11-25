@@ -1,11 +1,11 @@
 # ComputeNAV / AI NAV Index Methodology v0
 
-> **Public copy note:** This document is an English translation of the project's internal methodology_v0.md (2026-11-16 PT; section 9.1 added 2026-11-24 PT). To respect data licences, this public version removes the Vast.ai figures, the eBay asking prices relayed by Mulligan, and private storage paths. All prices are shown in USD only (non-USD sources are converted at the day's FX rate), and individual listing / price-list values in Section 4 are replaced by USD ranges over at least 3 observations. Everything else is unchanged in substance. The public dashboard's daily calculation follows the "source admission criteria" in Section 10 and **does not use Vast.ai data**. In addition, the public data does not publish any method value with fewer than 3 observations (see the repository README). High-school student research project. Indicative data only. Not investment advice.
+> **Public copy note:** This document is an English translation of the project's internal methodology_v0.md (2026-11-16 PT; section 9.1 added 2026-11-24 PT; section 16 on the separate AMD Instinct MI300X sub-index added 2026-11-25 PT). To respect data licences, this public version removes the Vast.ai figures, the eBay asking prices relayed by Mulligan, and private storage paths. All prices are shown in USD only (non-USD sources are converted at the day's FX rate), and individual listing / price-list values in Section 4 are replaced by USD ranges over at least 3 observations. Everything else is unchanged in substance. The public dashboard's daily calculation follows the "source admission criteria" in Section 10 and **does not use Vast.ai data**. In addition, the public data does not publish any method value with fewer than 3 observations (see the repository README). High-school student research project. Indicative data only. Not investment advice.
 
 
 **Document status:** Draft for review; not an effective benchmark document  
 **Version:** v0.1-draft  
-**Date:** 2026-11-16 (Pacific Time, PT); section 9.1 added 2026-11-24 PT  
+**Date:** 2026-11-16 (Pacific Time, PT); section 9.1 added 2026-11-24 PT; section 16 added 2026-11-25 PT  
 **Preparation note:** This document is based on same-day tests of public data sources from an isolated environment (HTTP GET/POST, no login and no circumvention). All prices and counts are the results captured that day. Listing prices not verified as transactions are always labelled "listed" and are never treated as realized transactions. Parameters that have not been calibrated are always labelled **to-be-calibrated**; no values are invented.
 
 ---
@@ -37,7 +37,7 @@ The official reading of the index is **USD per GPU card**; where necessary a "sy
 
 | Item | v0 scope | Explicitly out of v0 scope |
 |---|---|---|
-| Models | NVIDIA H100 (SXM / PCIe; NVL is a separate observation bucket and is not yet in the composite; whether to merge it into H100 is **to-be-calibrated**) and NVIDIA A100 (40GB / 80GB; SXM / PCIe in separate buckets) | H200, B200, B300, GB200/GB300, AMD Instinct, consumer GPUs |
+| Models | NVIDIA H100 (SXM / PCIe; NVL is a separate observation bucket and is not yet in the composite; whether to merge it into H100 is **to-be-calibrated**) and NVIDIA A100 (40GB / 80GB; SXM / PCIe in separate buckets); plus a **separate sub-index** for AMD Instinct MI300X (OAM, 192 GB; see Section 16) | H200, B200, B300, GB200/GB300, other AMD Instinct models (MI325X / MI350X / MI355X / MI210 / MI250 etc. remain research observations only), consumer GPUs. MI300X is **not** part of the NVIDIA composite |
 | Unit | Realizable value per card (USD/card) | Unsplit racks, non-standardized full-rack NVL72 |
 | Geography | Mainly publicly available USD quotes or quotes convertible at the day's FX rate; original currency and tax basis are recorded | No claim of covering transactions in all jurisdictions worldwide |
 | Frequency | Target: one official reading per business day; the v0 data collector runs daily | Intraday real-time NAV |
@@ -293,7 +293,9 @@ Rules are **to-be-calibrated**. The v0 intent (not yet frozen) is as follows and
 \mathrm{NAV}^{comp}_t = \sum_{b \in \mathcal{B}_0} s_{b,t}\, \mathrm{NAV}_{b,t}
 \]
 
-\(\mathcal{B}_0\) is the set of buckets included in the v0 composite (the officially defined H100 SXM/PCIe and A100 40G/80G buckets; exact list **to-be-calibrated**). \( s_{b,t} \) is the in-service installed base or a publicly available proxy weight; source and update frequency **to-be-calibrated**. Until the weights are ready, no composite level is published, only sub-indices.
+\(\mathcal{B}_0\) is the set of buckets included in the v0 composite: **only** NVIDIA H100 SXM, H100 PCIe, A100 80GB and A100 40GB (installed-base weights are still **to-be-calibrated**; the current code publishes the equal-weight mean of these four). \( s_{b,t} \) is the in-service installed base or a publicly available proxy weight; source and update frequency **to-be-calibrated**. Until the weights are ready, the composite level is calculated with equal-weight placeholders and labelled to-be-calibrated.
+
+**AMD Instinct MI300X is a separate sub-index and is not in \(\mathcal{B}_0\).** It uses the same three approaches and publication guards as the NVIDIA sub-indices but does not enter the composite, so the NVIDIA composite history stays continuous. In the code this corresponds to `COMPOSITE_KEYS` / `composite_members`, kept apart from `OFFICIAL_INDEX_KEYS` (which includes MI300X).
 
 ### 8.2 Residual value curve
 
@@ -433,13 +435,33 @@ Every scraped observation, whether or not it enters the three official approache
 
 These fields are added to the `observations` table through a database migration (only missing columns are added; historical prices are not changed). A daily private raw-quote export includes both official and observation-only sources, and an `in_official_v0` flag shows whether each row entered that day's v0 official calculation. Any non-USD prices in this private research file are kept as quoted; all published values remain USD only.
 
-Starting from existing snapshots, the parser also recognises AMD Instinct models (MI300X, MI325X, MI350X, MI355X, MI250X, MI210; MI250 / MI350P are recorded as written if they appear in a source, not rewritten to a neighbouring SKU). Sources are limited to those already being collected: RunPod, DigitalOcean, Crusoe and Genius HPC. All of these AMD rows are **marked as excluded from the v0 official calculation** (`include_in_* = 0`). If Genius HPC's used catalogue only lists a chassis that is "compatible with MI210 / MI350P" but is actually configured with a different GPU, that chassis price is **not** recorded as an AMD per-GPU observation.
+Starting from existing snapshots, the parser also recognises AMD Instinct models (MI300X, MI325X, MI350X, MI355X, MI250X, MI210; MI250 / MI350P are recorded as written if they appear in a source, not rewritten to a neighbouring SKU). From 2026-11-25 PT, **only MI300X** enters the three v0 official approaches, and only as a separate sub-index (see Section 16); MI325X / MI350X / MI355X / MI210 / MI250 etc. all remain marked as excluded from the official calculation (`include_in_* = 0`). If Genius HPC's used catalogue only lists a chassis that is "compatible with MI210 / MI350P" but is actually configured with a different GPU, that chassis price is **not** recorded as an AMD per-GPU observation.
 
 ### 15.3 GPU age
 
 For future calibration of the residual-value curve, observation rows gain: `age_months`, `manufacture_date`, `first_deploy_date`, `age_source` (listing text / serial / seller statement / inferred), and `age_confidence`.
 
 Parsing rule: only age or dates that are **explicitly stated** in listing or price-list text are extracted (for example "3 years old", "18 months in service", "manufactured 2023-06", "pulled from cluster"). When there is only a condition or remaining-warranty hint such as "used / refurbished / 18-month warranty", the row may record `age_source=listing text` and `age_confidence=low`, but **`age_months` stays empty**: remaining warranty cannot be used to back out age when the original warranty length is unknown. Observations with no hint have all age fields set to `null`. No fake age is filled in by "taking the midpoint for unknown age" (the 50% factor in the cost approach is still a to-be-calibrated placeholder from Section 13 and is a different thing from these fields).
+
+
+## 16. v0 addendum: separate AMD Instinct MI300X sub-index (2026-11-25 PT)
+
+AMD Instinct MI300X was added to v0. The implementation choice is: **publish a separate MI300X sub-index and do not merge it into the existing NVIDIA composite**, so that the composite history is not broken by a new constituent. The public dashboard keeps the statement "high-school student research project, indicative data, not investment advice".
+
+### 16.1 Coverage
+
+- **Model bucket:** AMD Instinct MI300X, OAM module, 192 GB HBM3. The official unit is still USD per card.
+- **Approaches and guards:** the same as the NVIDIA sub-indices: market approach (parseable dealer listings or sold transactions, unweighted median), income approach (4-year DCF of the median of official on-demand / list rents, with the existing placeholder parameters) and cost approach (dealer new-card starting price × 50% remaining-value factor for unknown age). The minimum-sample rule, the jump guard and the same-day overwrite protection (Section 9.1) apply to MI300X as well. The composite uses only the four NVIDIA sub-indices; when MI300X is carried forward or missing, the composite does not change.
+- **Term tiers:** the income approach admits **on-demand GPU instance list prices only**. 12-month reserved, spot / interruptible, inference endpoints, suspected placeholder community prices, and quotes that only say "starting at" or whose term is unconfirmed are recorded but do not enter the official median. Public list prices of hyperscale clouds (OCI, Azure) are observation only as well: they include host, network and platform, and averaging them directly with neocloud per-GPU prices is **to-be-calibrated**.
+- **Cost-approach anchor:** AMD does not publish an MSRP. The provisional anchor is the "From" price (low end of the range, ex-VAT, converted to USD) of a **single-module** MI300X OAM in a public dealer catalogue. The top of the range and 8-GPU + UBB platform prices are observation only; boards or systems without the UBB deducted must not be treated as a per-card cost.
+- **Public display rule:** `MIN_SAMPLE_N = 3` applies. When a method has n < 3, the public site hides that method value; if publishing the NAV would let the hidden method value be backed out, the NAV is hidden too. A method with no observations (n = 0) is shown as "Insufficient samples". This rule is enforced on the public side by `export_public.py` and re-checked by `check_public.py`.
+
+### 16.2 Known limitations (read together with the index level)
+
+- **There is almost no verifiable secondary market.** As of 2026-11-25 PT there are zero sold transactions, and the main dealer's used catalogue has no single-card MI300X SKU. Several dealer product pages return access blocks (HTTP 403) or errors; none was bypassed, and earlier summary prices were not written in as same-day observations. eBay sold / active searches return the expected 403 and are observation only. A broker's published used-price range is neither a transaction nor an executable listing; it does not enter the market approach, and its midpoint is never used as a market price. The market approach is therefore often empty or n < 3, and the public site shows "Insufficient samples" rather than a falsely precise used price.
+- **High volatility and thin comparables.** Rental list prices still span a wide range (the official on-demand median comes from a small number of neoclouds; reserved, starting-at and hyperscale-cloud prices from the same sources are kept separate). Once used listings appear, their spreads may also be wide. The sub-index should be read as an indicative reading while samples are insufficient.
+- **Income- and cost-approach parameters are still placeholder assumptions** (remaining life 4 years, utilization 50%, opex 25%, discount rate 10%, 50% for unknown age) and have not been calibrated separately for AMD. The income-approach value is labelled "parameters to be calibrated" on the dashboard and is likely overstated. These parameters must not be read as a proven market utilization or residual-value curve.
+- **Other Instinct models** (MI325X, MI350X, MI355X, MI210, MI250 etc.) remain research observations only; they do not enter the v0 official calculation or the composite.
 
 ---
 

@@ -4,8 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ComputeNAV · GPU NAV Index Dashboard</title>
-<meta name="description" content="ComputeNAV: indicative NAV for used H100/A100 GPUs. High-school student research project. Indicative data only. Not investment advice.">
-<link rel="stylesheet" href="assets/style.css?v=202611171220">
+<meta name="description" content="ComputeNAV: indicative NAV for used H100/A100 GPUs, plus a separate AMD Instinct MI300X sub-index. High-school student research project. Indicative data only. Not investment advice.">
+<link rel="stylesheet" href="assets/style.css?v=20261125mi300x">
 </head>
 <body>
 <header class="banner" role="note" aria-label="Disclaimer">
@@ -19,7 +19,7 @@
 
 <main>
   <h1>ComputeNAV <small>GPU NAV Index Dashboard</small></h1>
-  <p class="lede">Daily indicative orderly-liquidation NAV (USD per card) for H100 SXM, H100 PCIe, A100 80GB and A100 40GB, equal-weighting the market, income and cost approaches.</p>
+  <p class="lede">Daily indicative orderly-liquidation NAV (USD per card) for H100 SXM, H100 PCIe, A100 80GB and A100 40GB, equal-weighting the market, income and cost approaches. AMD Instinct MI300X is published as a separate sub-index and is not part of the composite.</p>
 
   <div id="error" class="error" hidden></div>
 
@@ -30,6 +30,12 @@
   <section>
     <h2>Indicative NAV <small>USD per card</small></h2>
     <div id="metrics" class="metrics"></div>
+  </section>
+
+  <section hidden>
+    <h2>AMD Instinct MI300X <small>separate sub-index, not in composite</small></h2>
+    <div id="subindices" class="metrics subs"></div>
+    <p class="note">Methods with fewer than 3 observations are not published, and the NAV is hidden whenever it would let a hidden method value be backed out. Income-approach parameters are placeholder assumptions to be calibrated. High-school student research project; indicative data only; not investment advice.</p>
   </section>
 
   <section>
@@ -71,6 +77,6 @@
 <footer>
   <p>ComputeNAV is a high-school student research project for learning purposes. Indicative data only; not investment advice; no warranty of accuracy. © 2026 ComputeNAV project authors. All rights reserved.</p>
 </footer>
-<script src="assets/app.js?v=20261124guard"></script>
+<script src="assets/app.js?v=20261125mi300x"></script>
 </body>
 </html>

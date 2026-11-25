@@ -6,9 +6,14 @@ Fails (exit 1) if any public file contains
     symbols) anywhere, or an ISO code such as EUR, GBP, CNY, JPY next to a
     number, or a JSON key naming a non-USD rate (e.g. usd_per_eur) with a
     numeric value;
-  * non-English (CJK) text.
+  * non-English (CJK) text;
+  * (with --private-latest) any value that the small-sample rule hides today,
+    e.g. a method leg with n<3, a derived rent median / new-card anchor, or a
+    NAV / composite that would let one be backed out. This covers the
+    composite members and the separate sub-indices (AMD Instinct MI300X).
 
 Usage:  python3 pipeline/check_public.py            # checks docs/ and README.md
+        python3 pipeline/check_public.py --private-latest <run>/output/latest.json
 """
 from __future__ import annotations
 
@@ -76,13 +81,95 @@ def check(root: Path = ROOT) -> list[str]:
     return problems
 
 
-def main():
+LEGS = ("market", "income", "cost")
+DERIVED = {"income": ("rental_median_usd_per_hour",), "cost": ("new_card_usd",)}
+
+
+def _num(v):
+    return isinstance(v, (int, float)) and not isinstance(v, bool)
+
+
+def hidden_values(priv: dict, pub: dict) -> list[tuple[str, float]]:
+    """Private values that the public latest marks as hidden today."""
+    out = []
+    for k, pm in (pub.get("models") or {}).items():
+        if not pm:
+            continue
+        m = (priv.get("models") or {}).get(k) or {}
+        ins = pm.get("insufficient_sample") or {}
+        for leg in LEGS:
+            if ins.get(leg):
+                for f in (f"{leg}_usd",) + DERIVED.get(leg, ()):
+                    if _num(m.get(f)):
+                        out.append((f"{k}.{f}", float(m[f])))
+        if pm.get("nav_hidden") and _num(m.get("nav_indicative_usd")):
+            out.append((f"{k}.nav_indicative_usd", float(m["nav_indicative_usd"])))
+    pc, c = pub.get("composite") or {}, priv.get("composite") or {}
+    if pc.get("nav_hidden") and _num(c.get("nav_indicative_usd")):
+        out.append(("composite.nav_indicative_usd", float(c["nav_indicative_usd"])))
+    return out
+
+
+def _numbers(obj, path="", skip=None):
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            yield from _numbers(v, f"{path}.{k}", skip)
+    elif isinstance(obj, list):
+        for i, v in enumerate(obj):
+            yield from _numbers(v, f"{path}[{i}]", skip)
+    elif _num(obj):
+        yield path, float(obj)
+
+
+def _variants(v: float) -> set[str]:
+    return {f"{v:.2f}", f"{v:,.2f}", repr(round(v, 2)), f"{v:,.2f}".rstrip("0").rstrip(".")}
+
+
+def leak_problems(priv: dict, root: Path = ROOT) -> list[str]:
+    """Fail if a value hidden by the small-sample rule appears in any public file.
+    A hidden value that coincides exactly with a value legitimately published
+    in today's public latest.json is reported as a warning only (collision)."""
+    pub = json.loads((root / "docs" / "data" / "latest.json").read_text(encoding="utf-8"))
+    hidden = hidden_values(priv, pub)
+    # Legitimately published value fields of today's latest (for collisions).
+    fields = ("nav_indicative_usd", "market_usd", "income_usd", "cost_usd",
+              "rental_median_usd_per_hour", "new_card_usd")
+    published = {float(m[f]) for m in (pub.get("models") or {}).values() if m
+                 for f in fields if _num(m.get(f))}
+    if _num((pub.get("composite") or {}).get("nav_indicative_usd")):
+        published.add(float(pub["composite"]["nav_indicative_usd"]))
+    probs = []
+    for name, hv in hidden:
+        if any(abs(hv - pv) < 0.005 for pv in published):
+            # Only possible if the same number is legitimately published elsewhere.
+            print(f"PUBLIC CHECK WARNING: hidden {name} equals a published value; skipped", file=sys.stderr)
+            continue
+        for p in public_files(root):
+            rel = str(p.relative_to(root))
+            text = p.read_text(encoding="utf-8")
+            if p.suffix == ".json":
+                for path, v in _numbers(json.loads(text)):
+                    if abs(v - hv) < 0.005:
+                        probs.append(f"{rel}{path}: hidden value {name} published")
+            for s in _variants(hv):
+                if len(s.replace(",", "").replace(".", "")) >= 4 and re.search(rf"(?<![0-9.,]){re.escape(s)}(?![0-9])", text):
+                    probs.append(f"{rel}: hidden value {name} appears as text {s!r}")
+    return sorted(set(probs))
+
+
+def main(argv=None):
+    import argparse
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--private-latest", help="private run output/latest.json; enables the hidden-value leak check")
+    a = ap.parse_args(argv)
     probs = check()
+    if a.private_latest:
+        probs += leak_problems(json.loads(Path(a.private_latest).read_text(encoding="utf-8")))
     for p in probs:
         print("PUBLIC CHECK FAILED:", p)
     if probs:
         return 1
-    print("public check OK: USD only, English only")
+    print("public check OK: USD only, English only" + (", no hidden (n<3) values" if a.private_latest else ""))
     return 0
 
 

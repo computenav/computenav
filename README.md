@@ -14,7 +14,8 @@ ComputeNAV is a daily research index of the **indicative realizable net asset va
 | H100 PCIe | 80GB PCIe card |
 | A100 80GB | SXM / PCIe 80GB |
 | A100 40GB | 40GB |
-| Composite | Equal-weight mean of the four sub-indices (installed-base weights to be calibrated) |
+| Composite | Equal-weight mean of the four NVIDIA sub-indices above (installed-base weights to be calibrated) |
+| AMD Instinct MI300X | **Separate sub-index, not in the composite** (OAM, 192 GB; methodology Section 16). Same three methods and small-sample rule; income-approach parameters are placeholders to be calibrated |
 
 Each model's indicative NAV is the equal-weight mean of the three approaches available that day:
 
@@ -51,9 +52,10 @@ Running locally:
 
 ```bash
 COMPUTENAV_DATA_DIR=/tmp/computenav-private \
-COMPUTENAV_SKIP_SOURCES=vast_public_feed,vast_bundles,ebay_sold,ebay_active \
+COMPUTENAV_SKIP_SOURCES=vast_public_feed,vast_bundles,ebay_sold,ebay_active,ebay_sold_mi300x,ebay_active_mi300x \
 python3 pipeline/run_daily.py
 python3 pipeline/export_public.py --private-latest /tmp/computenav-private/output/latest.json
+python3 pipeline/check_public.py --private-latest /tmp/computenav-private/output/latest.json
 pip install -r requirements.txt && python3 pipeline/render_methodology.py
 python3 -m http.server -d docs 8000   # open http://localhost:8000
 # Without COMPUTENAV_DATA_DIR the script writes to the upstream default location.
@@ -62,8 +64,8 @@ python3 -m http.server -d docs 8000   # open http://localhost:8000
 ## Data licensing
 
 - **Vast.ai:** its public pricing data terms state that "use in any index, benchmark, or derivative product requires a data license (data@vast.ai)". Per Section 10 of the methodology, Vast.ai is observation-only and **does not enter the official calculation** until licensed; the daily CI does not fetch it at all (`COMPUTENAV_SKIP_SOURCES`).
-- **eBay:** there is no licensed API access, and web requests are blocked (403). This project does not bypass any access restriction, and the CI does not request eBay.
-- **Clustermelt, Mulligan (relays eBay listings):** observation-only upstream; they do not enter the official calculation. Listings from **AnchorGPU and ServerPartsDeals** do not enter the official median either. None of their raw values are published.
+- **eBay:** there is no licensed API access, and web requests are blocked (403). This project does not bypass any access restriction, and the CI does not request eBay (including the MI300X searches `ebay_sold_mi300x` / `ebay_active_mi300x`).
+- **Clustermelt, Mulligan (relays eBay listings):** observation-only upstream; they do not enter the official calculation. Listings from **AnchorGPU and ServerPartsDeals**, and the ServerBuyback broker range for MI300X, do not enter the official median either. None of their raw values are published.
 - The public repository and site contain **only per-model aggregates** (NAV, method values, sample counts and medians, subject to the small-sample rule). They do **not** contain any listing-level or rental observation, per-source raw prices, raw snapshots or the database (see `.gitignore`).
 - Other public price-list sources (RunPod, Lambda, CoreWeave, etc.) still need their terms confirmed one by one before systematic collection.
 

@@ -5,9 +5,11 @@
   "use strict";
   var DASH = "\u2014";
   var TZ = "America/Los_Angeles";
-  var MODEL_KEYS = ["H100_SXM", "H100_PCIe", "A100_80GB", "A100_40GB"];
+  var MODEL_KEYS = ["H100_SXM", "H100_PCIe", "A100_80GB", "A100_40GB"];   // composite members
+  var SUB_KEYS = ["MI300X"];                                               // separate sub-indices, not in composite
+  function subKeys(L) { return SUB_KEYS.filter(function (k) { return !!((L && L.models) || {})[k]; }); }
   var LEG_NAMES = { market: "market", income: "income", cost: "cost" };
-  var COLORS = { COMPOSITE: "#1d2330", H100_SXM: "#2f5bd3", H100_PCIe: "#0f9d8a", A100_80GB: "#d97706", A100_40GB: "#b42318" };
+  var COLORS = { COMPOSITE: "#1d2330", H100_SXM: "#2f5bd3", H100_PCIe: "#0f9d8a", A100_80GB: "#d97706", A100_40GB: "#b42318", MI300X: "#7c3aed" };
 
   function isNum(v) { return typeof v === "number" && isFinite(v); }
   function usd(v, d) {
@@ -100,7 +102,8 @@
     var html = "<div class='metric primary" + (cHidden || cStale ? " warn" : "") + "'><div class='v'>" + (cHidden ? hiddenHTML() : usd(c.nav_indicative_usd)) +
       "</div><div class='l'>" + esc(c.label || "Composite") + (isStale(c) ? "<br>" + staleBadge(c) : "") + "</div>" + cDod + "<div class='d'>" +
       (cHidden && c.nav_hidden_reason ? esc(c.nav_hidden_reason) + "<br>" : "") +
-      "Equal-weight mean of the sub-indices (" + int(c.n_models) + " models with a value); installed-base weights to be calibrated</div></div>";
+      "Equal-weight mean of the four NVIDIA sub-indices (" + int(c.n_models) + " models with a value); installed-base weights to be calibrated." +
+      ((c.excluded_subindices || []).length ? " AMD Instinct MI300X is a separate sub-index and is not included." : "") + "</div></div>";
     MODEL_KEYS.forEach(function (k) {
       var m = (L.models || {})[k];
       if (!m) { html += "<div class='metric warn'><div class='v'>" + DASH + "</div><div class='l'>" + k + "</div><div class='d'>No data</div></div>"; return; }
@@ -125,6 +128,37 @@
     $("metrics").innerHTML = html;
   }
 
+  function renderSubindices(L, H) {
+    var keys = subKeys(L), el = $("subindices");
+    if (!el) return;
+    if (!keys.length) { el.parentNode.hidden = true; return; }
+    el.parentNode.hidden = false;
+    el.innerHTML = keys.map(function (k) {
+      var m = L.models[k], ins = m.insufficient_sample || {}, asof = L.asof_date_pt;
+      var hidden = !!m.nav_hidden, stale = isStale(m);
+      function legRow(lg, title, extra) {
+        var n = m[lg + "_n"], val;
+        if (!isNum(n) || n === 0) val = "<span class='skip'>" + (lg === "market" && m.market_note ? "Insufficient samples (n=0)" : "No data (n=0)") + "</span>";
+        else if (ins[lg]) val = smallHTML(n) + " <span class='en'>hidden</span>";
+        else val = "<strong>" + usd(m[lg + "_usd"]) + "</strong> <span class='en'>(n=" + int(n) + ")</span>";
+        return "<tr><th scope='row'>" + title + "</th><td>" + val + (extra ? "<br><span class='en'>" + extra + "</span>" : "") + "</td></tr>";
+      }
+      var incExtra = "<span class='badge calib'>" + esc(m.income_note || "Parameters to be calibrated (placeholder assumptions)") + "</span>" +
+        (!ins.income && isNum(m.rental_median_usd_per_hour) ? " · rent median " + usd(m.rental_median_usd_per_hour, 2) + " /GPU-hr" : "");
+      var dod = hidden ? "" : dodHTML(m.nav_indicative_usd, lastComparable(H, k, asof), isDodExcluded(m));
+      return "<div class='metric sub" + (hidden || stale ? " warn" : "") + "'>" +
+        "<div class='l'>" + esc(m.label || k) + (stale ? "<br>" + staleBadge(m) : "") + "</div>" +
+        "<div class='v'>" + (hidden ? hiddenHTML() : usd(m.nav_indicative_usd)) + " <small>indicative NAV, USD per card</small></div>" + dod +
+        (hidden && m.nav_hidden_reason ? "<div class='d'>" + esc(m.nav_hidden_reason) + "</div>" : "") +
+        "<table class='legs'><tbody>" +
+        legRow("market", "Market approach", m.market_note ? esc(m.market_note) : "") +
+        legRow("income", "Income approach", incExtra) +
+        legRow("cost", "Cost approach", ins.cost ? "Not published: fewer than 3 observations" : "") +
+        "</tbody></table>" +
+        "<div class='d'>Separate sub-index: not part of the NVIDIA composite. Quality flags: " + esc(qualityText(m.quality_flag)) + "</div></div>";
+    }).join("");
+  }
+
   function qualityText(q) {
     if (!q) return DASH;
     var map = {
@@ -135,6 +169,9 @@
       "income_assumptions=to-be-calibrated": "income parameters to be calibrated",
       "cost_age_fraction=to-be-calibrated": "cost remaining-value factor to be calibrated",
       "carried_forward": "stale / carried forward",
+      "equal_weight_of_four_nvidia_models": "equal weight of the four NVIDIA models",
+      "mi300x_excluded_from_composite": "MI300X excluded from the composite (separate sub-index)",
+      "installed_base_weights=to-be-calibrated": "installed-base weights to be calibrated",
       "stale": "stale / carried forward"
     };
     return q.split(";").map(function (t) { return map[t] || t; }).join("; ");
@@ -143,10 +180,15 @@
   function renderBreakdown(L) {
     var head = ["Model", "Indicative NAV", "Market", "n", "Income", "Rent median /GPU-hr", "n", "Cost", "New-card anchor", "n", "Quality flags"];
     var num = [false, true, true, true, true, true, true, true, true, true, false];
-    var rows = MODEL_KEYS.map(function (k) {
+    var rows = MODEL_KEYS.concat(subKeys(L)).map(function (k) {
       var m = (L.models || {})[k] || {};
       var ins = m.insufficient_sample || {};
-      function leg(name, v, d) { return ins[name] ? smallHTML(m[name + "_n"]) : usd(v, d); }
+      var sub = SUB_KEYS.indexOf(k) >= 0;
+      function leg(name, v, d) {
+        if (ins[name]) return smallHTML(m[name + "_n"]);
+        if (sub && name === "market" && m.market_note && !isNum(v)) return "<span class='skip'>Insufficient samples (n=0)</span>";
+        return usd(v, d) + (sub && name === "income" && isNum(v) && d == null ? " <span class='badge calib'>parameters to be calibrated</span>" : "");
+      }
       var navCell = (m.nav_hidden ? "<span class='skip'>Hidden</span>" : usd(m.nav_indicative_usd)) + staleBadge(m);
       return [esc(m.label || k), navCell,
         leg("market", m.market_usd), int(m.market_n), leg("income", m.income_usd),
@@ -167,7 +209,7 @@
 
   function renderChart(H) {
     var dates = (H && H.dates) || [];
-    var keys = ["COMPOSITE"].concat(MODEL_KEYS);
+    var keys = ["COMPOSITE"].concat(MODEL_KEYS).concat(SUB_KEYS.filter(function (k) { return !!(H.series || {})[k]; }));
     var series = keys.map(function (k) {
       var s = (H.series || {})[k] || { points: [] };
       var byDate = {};
@@ -204,7 +246,7 @@
       });
       if (seg.length) paths.push(seg);
       paths.forEach(function (p) {
-        if (p.length > 1) svg += "<polyline fill='none' stroke='" + col + "' stroke-width='" + (s.key === "COMPOSITE" ? 3 : 2) + "' points='" + p.join(" ") + "'/>";
+        if (p.length > 1) svg += "<polyline fill='none' stroke='" + col + "' stroke-width='" + (s.key === "COMPOSITE" ? 3 : 2) + "'" + (SUB_KEYS.indexOf(s.key) >= 0 ? " stroke-dasharray='6 4'" : "") + " points='" + p.join(" ") + "'/>";
       });
       s.values.forEach(function (v, i) {
         if (isNum(v)) {
@@ -264,7 +306,7 @@
 
   Promise.all([getJSON("data/latest.json"), getJSON("data/history.json")]).then(function (r) {
     var L = r[0], H = r[1];
-    renderProps(L); renderMetrics(L, H); renderBreakdown(L); renderSmallSampleNote(L); renderChart(H);
+    renderProps(L); renderMetrics(L, H); renderSubindices(L, H); renderBreakdown(L); renderSmallSampleNote(L); renderChart(H);
     renderAssumptions(L); renderHealth(L); renderLicensing(L);
     document.body.setAttribute("data-rendered", "1");
   }).catch(function (e) {

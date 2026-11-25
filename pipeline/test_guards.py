@@ -250,3 +250,134 @@ class PublicationGuardExportTests(unittest.TestCase):
         self.assertNotIn("10563.08", blob)
         self.assertNotIn("7545.06", blob)
         self.assertNotIn("raw_nav", blob)
+
+
+# ---------------------------------------------------------------------------
+# AMD Instinct MI300X: separate sub-index (methodology section 16)
+# ---------------------------------------------------------------------------
+MI300X_HIDDEN_1125 = ("7063.29", "19099.09", "14126.58")  # cost n=1, NAV, new-card anchor (2026-11-25)
+
+
+def _priv_fixture():
+    """Private-shaped latest mirroring 2026-11-25: NVIDIA legs all publishable
+    (n>=3) so the composite is publishable; MI300X market n=0, income n=5,
+    cost n=1 (hidden) -> NAV hidden."""
+    def model(nav, mk, inc, cost, n, legs, rent=None, new=None):
+        return {"nav_indicative_usd": nav, "market_usd": mk, "income_usd": inc, "cost_usd": cost,
+                "market_n": n[0], "income_n": n[1], "cost_n": n[2],
+                "rental_median_usd_per_hour": rent, "new_card_usd": new, "quality_flag": "sold_n=0",
+                "breakdown": {"indicative_nav": {"legs_used": legs}},
+                "raw_nav_indicative_usd": nav, "stale": False, "carried_forward": False,
+                "dod_excluded": False, "carry_reason": None, "carried_from_asof": None, "legs_present": legs}
+    return {
+        "asof_date_pt": "2026-11-25", "computed_at_pt": "2026-11-25T13:10:02-08:00",
+        "computed_at_utc": "2026-11-25T21:10:02+00:00", "run_id": "test", "sold_count_today": 0,
+        "observation_count": 0, "official_observation_counts": {"market": 0, "income": 0, "cost_new": 0},
+        "fx": {"source": "test", "asof_utc": "2026-11-25T00:00:00+00:00"}, "assumptions": {}, "source_health": [],
+        "models": {
+            "H100_SXM": model(19735.02, None, 19735.02, None, (0, 11, 0), 1, 2.49),
+            "H100_PCIe": model(16652.86, None, 16652.86, None, (0, 3, 0), 1, 1.99),
+            "A100_80GB": model(8634.34, None, 8634.34, None, (0, 9, 0), 1, 1.19),
+            "A100_40GB": model(20721.89, None, 20721.89, None, (0, 4, 0), 1, 1.29),
+            "MI300X": model(19099.09, None, 31134.89, 7063.29, (0, 5, 1), 2, 2.99, 14126.58),
+        },
+        "composite": {"nav_indicative_usd": 16436.03, "quality_flag": "mi300x_excluded_from_composite",
+                      "breakdown": {"n_models": 4, "composite_members": ep.MODEL_KEYS,
+                                    "excluded_subindices": ["MI300X"]},
+                      "raw_nav_indicative_usd": 16436.03, "stale": False, "carried_forward": False},
+    }
+
+
+class MI300XSubindexTests(unittest.TestCase):
+    def setUp(self):
+        self.pub = ep.build_latest(_priv_fixture())
+
+    def test_mi300x_masked_and_separate(self):
+        m = self.pub["models"]["MI300X"]
+        self.assertEqual(m["income_usd"], 31134.89)
+        self.assertEqual(m["rental_median_usd_per_hour"], 2.99)
+        self.assertIsNone(m["cost_usd"])
+        self.assertIsNone(m["new_card_usd"])
+        self.assertIsNone(m["market_usd"])
+        self.assertIsNone(m["nav_indicative_usd"])
+        self.assertTrue(m["nav_hidden"])
+        self.assertTrue(m["insufficient_sample"]["cost"])
+        self.assertFalse(m["insufficient_sample"]["market"])  # n=0: absent, not "small"
+        self.assertIn("Insufficient samples", m["market_note"])
+        self.assertIn("Parameters to be calibrated", m["income_note"])
+        self.assertFalse(m["in_composite"])
+        self.assertTrue(m["separate_subindex"])
+        self.assertEqual(self.pub["composite_members"], ep.MODEL_KEYS)
+        self.assertNotIn("MI300X", self.pub["composite"]["members"])
+        self.assertEqual(self.pub["composite"]["excluded_subindices"], ["MI300X"])
+        blob = json.dumps(self.pub)
+        for v in MI300X_HIDDEN_1125:
+            self.assertNotIn(v, blob)
+
+    def test_composite_unaffected_by_mi300x(self):
+        # MI300X's hidden cost leg must not hide (or enter) the composite.
+        self.assertEqual(self.pub["composite"]["nav_indicative_usd"], 16436.03)
+        self.assertFalse(self.pub["composite"]["nav_hidden"])
+        plan = ep.plan_masking({k: {l: self.pub["models"][k][f"{l}_n"] for l in ep.LEGS} for k in ep.MODEL_KEYS})
+        self.assertNotIn("MI300X", plan["nav"])
+        self.assertEqual(plan["composite"], "published")
+
+    def test_guard_rejects_mi300x_leaks(self):
+        H = ep.upsert_history(None, self.pub)
+        ep.assert_small_sample(self.pub, H)
+        for field, val in (("cost_usd", 7063.29), ("nav_indicative_usd", 19099.09), ("new_card_usd", 14126.58)):
+            L = copy.deepcopy(self.pub)
+            L["models"]["MI300X"][field] = val
+            with self.assertRaises(SystemExit, msg=field):
+                ep.assert_small_sample(L, H)
+            H2 = copy.deepcopy(H)
+            H2["series"]["MI300X"]["points"][-1][field] = val
+            if field != "new_card_usd":  # history points do not carry the anchor
+                with self.assertRaises(SystemExit, msg="history " + field):
+                    ep.assert_small_sample(self.pub, H2)
+
+    def test_check_public_leak_detection(self):
+        priv = _priv_fixture()
+        root = Path(tempfile.mkdtemp())
+        (root / "docs" / "data").mkdir(parents=True)
+        (root / "README.md").write_text("ComputeNAV\n")
+        (root / "docs" / "data" / "latest.json").write_text(json.dumps(self.pub))
+        (root / "docs" / "index.html").write_text("<p>ok</p>")
+        self.assertEqual(check_public.leak_problems(priv, root), [])
+        for leak in ("$19,099.09", "7063.29", "14126.58"):
+            (root / "docs" / "index.html").write_text(f"<p>{leak}</p>")
+            self.assertTrue(check_public.leak_problems(priv, root), leak)
+        (root / "docs" / "index.html").write_text("<p>ok</p>")
+        L = copy.deepcopy(self.pub)
+        L["models"]["MI300X"]["debug"] = 7063.29
+        (root / "docs" / "data" / "latest.json").write_text(json.dumps(L))
+        self.assertTrue(check_public.leak_problems(priv, root))
+
+    def test_live_public_files_have_no_mi300x_hidden_values(self):
+        for p in check_public.public_files():
+            text = p.read_text(encoding="utf-8")
+            for v in MI300X_HIDDEN_1125:
+                self.assertNotIn(v, text, str(p))
+
+    def test_subindex_refusal_does_not_block_composite(self):
+        H = ep.upsert_history(None, self.pub)
+        later = copy.deepcopy(self.pub)
+        later["computed_at_pt"] = "2026-11-25T16:00:00-08:00"
+        later["models"]["MI300X"].update(stale=True, carried_forward=True, dod_excluded=True)
+        later["models"]["H100_SXM"]["nav_indicative_usd"] = 19800.0
+        later["models"]["H100_SXM"]["income_usd"] = 19800.0
+        out = ep.upsert_history(copy.deepcopy(H), later)
+        sxm = out["series"]["H100_SXM"]["points"][-1]
+        mi = out["series"]["MI300X"]["points"][-1]
+        self.assertEqual(sxm["nav_indicative_usd"], 19800.0)
+        self.assertFalse(mi["stale"])  # earlier same-day MI300X point kept
+        self.assertEqual(mi["income_usd"], 31134.89)
+
+    def test_no_mi300x_in_private_means_no_card(self):
+        priv = _priv_fixture()
+        del priv["models"]["MI300X"]
+        pub = ep.build_latest(priv)
+        self.assertNotIn("MI300X", pub["models"])
+        self.assertEqual(pub["separate_subindices"], [])
+        H = ep.upsert_history(None, pub)
+        self.assertNotIn("MI300X", H["series"])

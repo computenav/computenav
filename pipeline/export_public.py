@@ -54,12 +54,20 @@ from pathlib import Path
 SCHEMA_VERSION = 2
 MIN_SAMPLE_N = 3          # Wilson 2026-11-17: legs with n < 3 are not published
 LEGS = ("market", "income", "cost")
+# MODEL_KEYS = composite members (NVIDIA). Do not add AMD keys here: the
+# composite history must stay continuous (methodology section 16).
 MODEL_KEYS = ["H100_SXM", "H100_PCIe", "A100_80GB", "A100_40GB"]
-SERIES_KEYS = MODEL_KEYS + ["COMPOSITE"]
+# Separate sub-indices: same three methods and the same small-sample masking,
+# but NOT members of the composite. Each is masked on its own (it shares no
+# equation with the composite or with any other model).
+SUBINDEX_KEYS = ["MI300X"]
+ALL_MODEL_KEYS = MODEL_KEYS + SUBINDEX_KEYS
+SERIES_KEYS = ALL_MODEL_KEYS + ["COMPOSITE"]
 LABELS_EN = {
     "H100_SXM": "H100 SXM", "H100_PCIe": "H100 PCIe",
     "A100_80GB": "A100 80GB", "A100_40GB": "A100 40GB",
-    "COMPOSITE": "Composite (equal-weight, to be calibrated)",
+    "MI300X": "AMD Instinct MI300X (separate sub-index, not in composite)",
+    "COMPOSITE": "Composite (equal-weight of the four NVIDIA models, to be calibrated)",
 }
 
 # English versions of the upstream (Chinese) assumption texts. Keyed by path;
@@ -77,9 +85,9 @@ ASSUMPTION_TEXT_EN = {
     ("income", "rental_rate_rule"): ("45a309c883bc", "Median of the day's on-demand / list rents (USD per GPU-hour) admitted to the income approach. Reserved, spot and unclear-term observations, and observations whose form factor cannot be assigned, are excluded from the median."),
     ("cost", "book_life_note"): ("190b61bbd4db", "Placeholder: the straight-line life uses IREN's 5-year accounting life for pledged GPUs as a scenario anchor (CoreWeave uses 6 years for compute equipment). The official life is to be calibrated."),
     ("cost", "age_note"): ("3e87306a5ad5", "Placeholder: used observations generally lack age, so the cost approach uses a 50% remaining-value factor (\"5-year straight line, midpoint for unknown age\"). Not a calibrated residual curve."),
-    ("cost", "new_price_source"): ("1de9ef7f365f", "Genius HPC \"New From\" prices on the same page (ex-VAT dealer starting prices in a non-USD currency, converted to USD at the daily FX rate) are preferred. These are not NVIDIA MSRP and not US channel prices."),
+    ("cost", "new_price_source"): ("33387ed61535", "Genius HPC \"New From\" prices on the same page (ex-VAT dealer starting prices in a non-USD currency, converted to USD at the daily FX rate) are preferred. The provisional MI300X cost-approach anchor is the single-module \"From\" price (low end of the range) in a public dealer catalogue. These are not NVIDIA or AMD MSRP and not US channel prices."),
     ("market", "listing_rule"): ("692ece886998", "Only parseable dealer listings are used (Genius HPC in stock, Creative Compute on enquiry). AnchorGPU (ordering not open), third-party compilations (Clustermelt/Mulligan), unavailable systems, and systems simply divided by card count without deducting host components do not enter the official market-approach median."),
-    ("composite", "rule"): ("008851e89fec", "Equal-weight average of the four sub-indices (installed-base weights to be calibrated). Each sub-index's indicative NAV is the equal-weight average of the market/income/cost values available that day (method weights to be calibrated)."),
+    ("composite", "rule"): ("4aee7c1001bf", "Equal-weight average of the four NVIDIA sub-indices (H100 SXM / H100 PCIe / A100 80GB / A100 40GB; installed-base weights to be calibrated). AMD Instinct MI300X is a separate sub-index and is not part of the composite, so the composite history stays continuous. Each sub-index's indicative NAV is the equal-weight average of the market/income/cost values available that day (method weights to be calibrated)."),
 }
 CJK_RE = re.compile(r"[\u3000-\u9fff\uff00-\uffef]")
 
@@ -131,6 +139,8 @@ LICENCE_RESTRICTED = {
     "vast_bundles": "Vast.ai: same data-licence requirement as the public feed",
     "ebay_sold": "eBay: no licensed API access; ToS restricts scraping / reuse of sold comps",
     "ebay_active": "eBay: no licensed API access; ToS restricts scraping",
+    "ebay_sold_mi300x": "eBay (MI300X search): no licensed API access; ToS restricts scraping / reuse of sold comps",
+    "ebay_active_mi300x": "eBay (MI300X search): no licensed API access; ToS restricts scraping",
 }
 # Sources that are collected for cross-check only (weight 0) and whose raw
 # values are never published. Listed here for transparency in the public JSON.
@@ -139,6 +149,7 @@ CROSS_CHECK_ONLY = {
     "mulligan": "derived from eBay listings; inherits eBay terms; weight 0",
     "anchorgpu": "orders not open; reference only; weight 0",
     "serverpartdeals": "unavailable 8-GPU server listing; weight 0",
+    "serverbuyback_index": "broker's published used-price range (not a transaction or executable listing); observation only, weight 0",
 }
 
 DISCLAIMER = ("High-school student research project. Indicative data only, no sold transactions yet; "
@@ -199,11 +210,14 @@ def _identifiable(equations, n_unknowns):
     return out
 
 
-def plan_masking(ns: dict) -> dict:
+def plan_masking(ns: dict, keys=None, with_composite: bool = True) -> dict:
     """ns: {model_key: {"market": n, "income": n, "cost": n}}.
     Decides from sample counts only which legs are hidden and which NAVs /
     composite can be published without revealing a hidden leg.
-    Greedy order: model NAVs (MODEL_KEYS order) first, then the composite."""
+    Greedy order: model NAVs (keys order) first, then the composite.
+    keys defaults to the composite members (MODEL_KEYS). For a separate
+    sub-index call it with keys=[key], with_composite=False."""
+    MODEL_KEYS = list(keys) if keys is not None else globals()["MODEL_KEYS"]
     unknowns = [(k, leg) for k in MODEL_KEYS for leg in LEGS if _hidden(ns[k][leg])]
     idx = {u: i for i, u in enumerate(unknowns)}
     nu = len(unknowns)
@@ -236,7 +250,7 @@ def plan_masking(ns: dict) -> dict:
             plan["nav"][k] = "published"
         else:
             plan["nav"][k] = "hidden"
-    if comp_row is None:
+    if not with_composite or comp_row is None:
         plan["composite"] = "absent"
     elif nu == 0 or not _identifiable(published + [comp_row], nu):
         published.append(comp_row)
@@ -300,12 +314,25 @@ def assert_small_sample(latest_pub: dict, hist: dict) -> None:
         if comp_val is not None and plan["composite"] != "published":
             raise SystemExit(f"GUARD: {where} composite would reveal a leg with n<{MIN_SAMPLE_N}")
 
+    def check_sub(where, k, p):
+        # Separate sub-index: its NAV equation stands alone (not in the composite).
+        if p is None:
+            return
+        check_point(f"{where}.{k}", p)
+        plan = plan_masking({k: {leg: p.get(f"{leg}_n") for leg in LEGS}}, keys=[k], with_composite=False)
+        if p.get("nav_indicative_usd") is not None and plan["nav"][k] != "published":
+            raise SystemExit(f"GUARD: {where}.{k} NAV would reveal a leg with n<{MIN_SAMPLE_N}")
+
     check_set("latest", latest_pub["models"], (latest_pub.get("composite") or {}).get("nav_indicative_usd"))
+    for k in SUBINDEX_KEYS:
+        check_sub("latest", k, latest_pub["models"].get(k))
     for d in hist.get("dates", []):
         pts = {k: next((p for p in hist["series"].get(k, {}).get("points", []) if p["asof_date_pt"] == d), None)
-               for k in MODEL_KEYS}
+               for k in ALL_MODEL_KEYS}
         cp = next((p for p in hist["series"].get("COMPOSITE", {}).get("points", []) if p["asof_date_pt"] == d), None)
         check_set(f"history[{d}]", pts, cp.get("nav_indicative_usd") if cp else None)
+        for k in SUBINDEX_KEYS:
+            check_sub(f"history[{d}]", k, pts.get(k))
 
 
 
@@ -385,8 +412,10 @@ def build_latest(priv: dict, allow_observation_only: bool = False) -> dict:
             )
 
     models = {}
-    for key in MODEL_KEYS:
+    for key in ALL_MODEL_KEYS:
         m = (priv.get("models") or {}).get(key)
+        if m is None and key in SUBINDEX_KEYS:
+            continue  # older private runs have no MI300X; omit rather than publish an empty card
         if m is None:
             models[key] = None
             continue
@@ -405,6 +434,8 @@ def build_latest(priv: dict, allow_observation_only: bool = False) -> dict:
             "rental_median_usd_per_hour": m.get("rental_median_usd_per_hour"),
             "new_card_usd": m.get("new_card_usd"),
             "quality_flag": m.get("quality_flag"),
+            "in_composite": key in MODEL_KEYS,
+            "separate_subindex": key in SUBINDEX_KEYS,
         }
         models[key].update(extract_guard_fields(m, composite=False))
     ns = {k: {leg: (models[k] or {}).get(f"{leg}_n") for leg in LEGS} for k in MODEL_KEYS}
@@ -412,6 +443,13 @@ def build_latest(priv: dict, allow_observation_only: bool = False) -> dict:
     for k in MODEL_KEYS:
         if models[k] is not None:
             mask_model(models[k], plan["nav"][k])
+    for k in SUBINDEX_KEYS:
+        if models.get(k) is not None:
+            sub = plan_masking({k: {leg: models[k].get(f"{leg}_n") for leg in LEGS}}, keys=[k], with_composite=False)
+            mask_model(models[k], sub["nav"][k])
+            if not _present(models[k].get("market_n")):
+                models[k]["market_note"] = "Insufficient samples (no dealer listings or sold transactions today)"
+            models[k]["income_note"] = "Parameters to be calibrated (placeholder assumptions)"
     comp = priv.get("composite") or {}
     comp_bd = comp.get("breakdown") or {}
     comp_hidden = plan["composite"] == "hidden"
@@ -455,10 +493,14 @@ def build_latest(priv: dict, allow_observation_only: bool = False) -> dict:
             "nav_hidden": comp_hidden,
             "nav_hidden_reason": COMPOSITE_HIDDEN_REASON if comp_hidden else None,
             "n_models": comp_bd.get("n_models"),
+            "members": [k for k in (comp_bd.get("composite_members") or MODEL_KEYS) if k in MODEL_KEYS],
+            "excluded_subindices": [k for k in (comp_bd.get("excluded_subindices") or []) if k in SUBINDEX_KEYS],
             "quality_flag": comp.get("quality_flag"),
             **extract_guard_fields(comp, composite=True),
         },
         "models": models,
+        "composite_members": list(MODEL_KEYS),
+        "separate_subindices": [k for k in SUBINDEX_KEYS if models.get(k) is not None],
         "small_sample_rule": {
             "min_n": MIN_SAMPLE_N,
             "text": "Any method leg with n<3 is published as null with its n and insufficient_sample=true; derived values (rent median, new-card anchor) are hidden too. NAV and composite are computed upstream from all legs (formula unchanged) but are hidden (nav_hidden=true) if publishing them would let a hidden leg be backed out.",
@@ -503,13 +545,23 @@ def upsert_history(hist: dict | None, latest_pub: dict) -> dict:
     date = latest_pub["asof_date_pt"]
     if not date:
         raise SystemExit("latest has no asof_date_pt")
-    new_pts = {key: _history_point(key, latest_pub) for key in SERIES_KEYS}
+    # Separate sub-indices are only upserted when today's latest has them.
+    keys = [k for k in SERIES_KEYS if k not in SUBINDEX_KEYS or (latest_pub.get("models") or {}).get(k)]
+    new_pts = {key: _history_point(key, latest_pub) for key in keys}
     existing = {}
-    for key in SERIES_KEYS:
+    for key in keys:
         s = hist["series"].setdefault(key, {"label": LABELS_EN[key], "points": []})
         existing[key] = next((p for p in s.get("points", []) if p.get("asof_date_pt") == date), None)
-    refused = [key for key in SERIES_KEYS if should_refuse_overwrite(existing[key], new_pts[key])]
-    if refused and any(existing[k] is not None for k in SERIES_KEYS):
+    refused_all = [key for key in keys if should_refuse_overwrite(existing[key], new_pts[key])]
+    # A refused separate sub-index point is skipped on its own; it never blocks
+    # the composite members (and vice versa the members are all-or-nothing).
+    sub_refused = [k for k in refused_all if k in SUBINDEX_KEYS]
+    if sub_refused:
+        print("history upsert refused for " + date + " (" + ", ".join(sub_refused)
+              + "); keeping the earlier same-asof_date sub-index point", file=sys.stderr)
+        keys = [k for k in keys if k not in sub_refused]
+    refused = [k for k in refused_all if k not in SUBINDEX_KEYS]
+    if refused and any(existing[k] is not None for k in keys):
         reasons = []
         for key in refused:
             new, old = new_pts[key], existing[key]
@@ -520,7 +572,7 @@ def upsert_history(hist: dict | None, latest_pub: dict) -> dict:
         print("history upsert refused for " + date + " (" + "; ".join(reasons)
               + "); keeping the earlier same-asof_date points", file=sys.stderr)
         return hist
-    for key in SERIES_KEYS:
+    for key in keys:
         s = hist["series"].setdefault(key, {"label": LABELS_EN[key], "points": []})
         s.pop("label_en", None)
         s["label"] = LABELS_EN[key]

@@ -75,7 +75,7 @@ ASSUMPTIONS = {
         "book_life_note": "占位：直线折旧年限取 IREN 质押 GPU 会计寿命 5 年作情景锚点（CoreWeave 计算设备为 6 年）。官方寿命待校准。",
         "unknown_age_remaining_fraction": 0.50,
         "age_note": "占位：二手观察普遍缺失机龄，成本法按「5 年直线、未知机龄取中点」使用 50% 剩余价值系数。不是已校准的残值曲线。",
-        "new_price_source": "优先使用 Genius HPC 同页 New From（欧元未税经销商起价），不是 NVIDIA MSRP，也不是美国渠道价。",
+        "new_price_source": "优先使用 Genius HPC 同页 New From（欧元未税经销商起价）；MI300X 成本法临时锚点取公开目录单模块 From（区间下限），不是 AMD MSRP，也不是美国渠道价。",
     },
     "market": {
         "sold_weight": "n/a (sold=0)",
@@ -83,7 +83,7 @@ ASSUMPTIONS = {
         "aggregator": "unweighted median (weights to-be-calibrated)",
     },
     "composite": {
-        "rule": "四只子指数的等权平均（装机量权数待校准）。子指数指示性 NAV 为当日可得的市场法/收益法/成本法的等权平均（三法权重待校准）。",
+        "rule": "NVIDIA 四只子指数（H100 SXM / H100 PCIe / A100 80GB / A100 40GB）的等权平均（装机量权数待校准）。AMD Instinct MI300X 为独立子指数，不进入该综合，以保持综合历史连续。子指数指示性 NAV 为当日可得的市场法/收益法/成本法的等权平均（三法权重待校准）。",
     },
 }
 
@@ -98,6 +98,8 @@ OBSERVATION_ONLY_SOURCES = {
     "mulligan": "sources.csv：v0 正式计算权重为 0，仅观察（第三方转述 eBay 要价，未经本管道复验）。",
     "ebay_sold": "无许可的成交带访问；不得进入官方计算。",
     "ebay_active": "无许可的在售搜索访问；不得进入官方计算。",
+    "ebay_sold_mi300x": "无许可的成交带访问（MI300X 检索）；不得进入官方计算，403 为预期，不得绕过。",
+    "ebay_active_mi300x": "无许可的在售搜索访问（MI300X 检索）；不得进入官方计算，403 为预期，不得绕过。",
 }
 
 # Publication guards: a single official-source outage must not move a published NAV.
@@ -297,12 +299,20 @@ def scrub_competitor_rows_from_db(conn: sqlite3.Connection) -> list[dict]:
     return removed
 
 
+# NVIDIA models that form the published composite. Do not add AMD keys here:
+# the composite history must stay continuous.
 MODEL_KEYS = ["H100_SXM", "H100_PCIe", "A100_80GB", "A100_40GB"]
+COMPOSITE_KEYS = list(MODEL_KEYS)
+# Official v0 also publishes a separate AMD Instinct MI300X sub-index.
+# It is computed with the same three approaches and publication guards,
+# but is not a member of COMPOSITE.
+OFFICIAL_INDEX_KEYS = MODEL_KEYS + ["MI300X"]
 MODEL_LABELS = {
     "H100_SXM": "H100 SXM",
     "H100_PCIe": "H100 PCIe",
     "A100_80GB": "A100 80GB",
     "A100_40GB": "A100 40GB",
+    "MI300X": "AMD Instinct MI300X",
     "COMPOSITE": "综合（等权，待校准）",
 }
 
@@ -613,7 +623,7 @@ def infer_region(row: dict) -> Optional[str]:
 
 def set_in_official_v0(row: dict) -> dict:
     official = (
-        row.get("model_key") in MODEL_KEYS
+        row.get("model_key") in OFFICIAL_INDEX_KEYS
         and row.get("source_id") not in OBSERVATION_ONLY_SOURCES
         and (
             bool(row.get("include_in_market"))
@@ -628,8 +638,11 @@ def set_in_official_v0(row: dict) -> dict:
 def enrich_observation(row: dict, snapshot_path: Optional[str] = None) -> dict:
     """Fill research fields without changing official-leg prices, keys, or inclusion flags for v0 models."""
     if is_amd_model(row.get("model")) or (row.get("model_key") in AMD_MODELS):
-        mark_not_in_official_v0(row, "AMD 观察，仅作研究/校准，不进入 v0 官方计算。")
         row["vendor"] = row.get("vendor") or "AMD"
+        # MI300X is an official v0 sub-index (not in the NVIDIA composite).
+        # Other Instinct SKUs stay research-only.
+        if row.get("model_key") != "MI300X":
+            mark_not_in_official_v0(row, "AMD 观察，仅作研究/校准，不进入 v0 官方计算。")
         if not row.get("form_factor") and row.get("model") in {"MI300X", "MI325X", "MI350X", "MI355X", "MI250X", "MI250"}:
             # OAM is the usual Instinct form, but only fill when the source already implied it or left it blank
             # after a parser that knew the form. Leave blank rather than invent if truly unknown.
@@ -1002,7 +1015,7 @@ def backfill_from_snapshots(conn: sqlite3.Connection, run_id: str, fx: "FX") -> 
         # Restore flags and prices if this is a v0 NVIDIA official-key row or any pre-existing row.
         # Existing rows keep their stored official flags and numeric prices.
         r["include_in_market"], r["include_in_income"], r["include_in_cost_new"], r["model_key"], r["price"], r["usd_per_card"], r["usd_per_gpu_hour"] = flags
-        if is_amd_model(r.get("model")):
+        if is_amd_model(r.get("model")) and r.get("model_key") != "MI300X":
             mark_not_in_official_v0(r, "AMD 观察，仅作研究/校准，不进入 v0 官方计算。")
         set_in_official_v0(r)
         after = {c: r.get(c) for c in NEW_OBS_COLS}
@@ -1045,18 +1058,11 @@ def backfill_from_snapshots(conn: sqlite3.Connection, run_id: str, fx: "FX") -> 
                 continue
             # New row (typically AMD). Never enter v0 official calc unless it is a pre-existing NVIDIA official key
             # with flags already set — new extracts that are not already stored stay research-only if AMD.
-            if is_amd_model(row.get("model")) or (row.get("model_key") not in MODEL_KEYS):
-                if row.get("model_key") not in MODEL_KEYS:
-                    # Keep include flags as the parser set them only for NVIDIA v0 keys that somehow were missed.
-                    # For non-v0 keys, force off.
-                    if row.get("model_key") not in MODEL_KEYS:
-                        row["include_in_market"] = 0 if is_amd_model(row.get("model")) or row.get("model_key") not in MODEL_KEYS else row.get("include_in_market")
-                        # The line above is messy. Clearer:
-                        pass
-                if row.get("model_key") not in MODEL_KEYS:
-                    row["include_in_market"] = 0
-                    row["include_in_income"] = 0
-                    row["include_in_cost_new"] = 0
+            if row.get("model_key") not in OFFICIAL_INDEX_KEYS:
+                # Non-v0 keys (other Instinct SKUs, NVL, etc.) stay research-only.
+                row["include_in_market"] = 0
+                row["include_in_income"] = 0
+                row["include_in_cost_new"] = 0
             mark_observation_only(row)
             set_in_official_v0(row)
             if competitor_exclusion_reason(row.get("source_id"), row.get("source_name"), row.get("source_url")):
@@ -1479,26 +1485,37 @@ def parse_genius(rec, fx):
         new_price = money_to_float(m.group(4))
         form = "PCIe" if inst == "MI210" else "OAM"
         vram = AMD_VRAM_HINT.get(inst)
+        official = (inst == "MI300X")
         if used_price:
+            used_notes = "未税欧元，在库/质保以页面为准。经销商挂牌，非成交。"
+            if official:
+                used_notes += " MI300X 二手目录单卡挂牌，进入独立子指数市场法。"
+            else:
+                used_notes += "【不进入 v0 官方计算】AMD 观察，仅作研究/校准。"
             out.append(enrich_observation(attach_fx(assign_model_key(obs(
                 source_id="geniushpc", source_name="Genius HPC secondary market", source_url=rec["url"],
                 observation_type="listed", sold_vs_listed="listed",
                 model=inst, form_factor=form, vram_gb=vram, condition="used_tested",
                 currency="EUR", price=used_price, unit="per_card", vendor="AMD",
                 raw_price_text=f"€{used_price:,.2f}",
-                notes="未税欧元，在库/质保以页面为准。经销商挂牌，非成交。【不进入 v0 官方计算】AMD 观察，仅作研究/校准。",
-                include_in_market=0,
+                notes=used_notes,
+                include_in_market=1 if official else 0,
                 raw_label=f"Genius HPC {inst} €{used_price:,.2f} ex-VAT used",
             )), fx)))
         if new_price:
+            new_notes = "经销商 New From 起价，未税欧元；不是 AMD MSRP，也不是美国渠道价。"
+            if official:
+                new_notes += " MI300X 进入独立子指数成本法锚点。"
+            else:
+                new_notes += "【不进入 v0 官方计算】AMD 观察，仅作研究/校准。"
             out.append(enrich_observation(attach_fx(assign_model_key(obs(
                 source_id="geniushpc", source_name="Genius HPC New From", source_url=rec["url"],
                 observation_type="new_from_list", sold_vs_listed="new_list",
                 model=inst, form_factor=form, vram_gb=vram, condition="new",
                 currency="EUR", price=new_price, unit="per_card", vendor="AMD",
                 raw_price_text=f"€{new_price:,.2f}",
-                notes="经销商 New From 起价，未税欧元。【不进入 v0 官方计算】AMD 观察，仅作研究/校准。",
-                include_in_cost_new=0,
+                notes=new_notes,
+                include_in_cost_new=1 if official else 0,
                 raw_label=f"Genius HPC New From {inst} €{new_price:,.2f}",
             )), fx)))
     return out
@@ -1734,20 +1751,35 @@ def parse_runpod(rec, fx):
                 bid = (t.get("lowestPrice") or {}).get("minimumBidPrice")
                 unint = (t.get("lowestPrice") or {}).get("uninterruptablePrice")
                 tenor = "spot" if (bid or (unint is not None and field == "communityPrice" and float(price) == float(unint or 0))) else "on-demand"
+                official = (model == "MI300X" and label == "secure" and tenor == "on-demand")
+                if official:
+                    notes = (
+                        f"{label} list; stock={stock}。"
+                        "MI300X Secure 按需价目，进入独立子指数收益法中位数。"
+                        "Community $0.50 等占位/疑似无库存价不进入官方中位数。"
+                    )
+                else:
+                    notes = (
+                        f"{label} list; stock={stock}。"
+                        "Secure/Community 仅作观察。【不进入 v0 官方计算】AMD 观察，仅作研究/校准。"
+                    )
                 row = attach_fx(assign_model_key(obs(
                     source_id="runpod", source_name="RunPod GraphQL gpuTypes", source_url=rec["url"],
                     observation_type="rental_list", sold_vs_listed="rental_list",
-                    model=model, form_factor=form, vram_gb=vram, currency="USD",
+                    model=model, form_factor=form or "OAM", vram_gb=vram, currency="USD",
                     price=float(price), unit="per_gpu_hour",
-                    tenor="on-demand",
+                    tenor=tenor,
                     availability=stock,
                     raw_price_text=f"${float(price):.2f}/hr",
-                    notes=f"{label} list; stock={stock}。Secure/Community 仅作观察。【不进入 v0 官方计算】AMD 观察，仅作研究/校准。",
-                    include_in_income=0,
+                    notes=notes,
+                    include_in_income=1 if official else 0,
                     vendor="AMD",
                     raw_label=f"RunPod {label} {name} {vram}GB ${float(price):.2f}/hr",
                 )), fx)
-                out.append(enrich_observation(mark_not_in_official_v0(row, "AMD 观察，仅作研究/校准，不进入 v0 官方计算。")))
+                if official:
+                    out.append(enrich_observation(row))
+                else:
+                    out.append(enrich_observation(mark_not_in_official_v0(row, "AMD 观察，仅作研究/校准，不进入 v0 官方计算。")))
             continue
         model = "H100" if "H100" in uname else "A100"
         form = None
@@ -1872,11 +1904,16 @@ def parse_digitalocean(rec, fx):
         qm = re.search(r"Choose between (\d+) or (\d+) GPU", window, re.I)
         if qm:
             qty = f"{qm.group(1)} or {qm.group(2)} GPUs per droplet"
+        official = (model == "MI300X" and tenor == "on-demand")
+        if official:
+            notes = tnote + " MI300X 按需价目，进入独立子指数收益法中位数；预留与现货不进入。"
+        else:
+            notes = tnote + " 【不进入 v0 官方计算】AMD 观察，仅作研究/校准。"
         out.append(_rental_row(
             fx, "digitalocean", "DigitalOcean GPU droplets", rec["url"],
             model, "OAM", vram, price,
-            notes=tnote + " 【不进入 v0 官方计算】AMD 观察，仅作研究/校准。",
-            include=False,
+            notes=notes,
+            include=official,
             label=f"DO {model} {lab} ${price}/hr",
             tenor=tenor, vendor="AMD", raw_price_text=f"${price}/GPU/hour",
             quantity_config=qty,
@@ -1978,10 +2015,21 @@ def _parse_crusoe_amd(raw_html: str, txt: str, rec: dict, fx: "FX") -> list:
                 price = money_to_float(cur.split("/")[0])
                 if not price:
                     continue
+                official = (inst == "MI300X")
+                if official:
+                    notes = (
+                        f"GPU instances 表：Current on-demand。New on-demand starting Dec 1, 2026 = {newp}。"
+                        "期限按需。MI300X GPU 实例按需价目，进入独立子指数收益法中位数。"
+                    )
+                else:
+                    notes = (
+                        f"GPU instances 表：Current on-demand。New on-demand starting Dec 1, 2026 = {newp}。"
+                        "期限按需。【不进入 v0 官方计算】AMD 观察，仅作研究/校准。"
+                    )
                 out.append(_rental_row(
                     fx, "crusoe", "Crusoe pricing", rec["url"], inst, "OAM", vram, price,
-                    notes=f"GPU instances 表：Current on-demand。New on-demand starting Dec 1, 2026 = {newp}。期限按需。【不进入 v0 官方计算】AMD 观察，仅作研究/校准。",
-                    include=False,
+                    notes=notes,
+                    include=official,
                     label=f"Crusoe {inst} on-demand ${price}/hr",
                     tenor="on-demand", vendor="AMD",
                     raw_price_text=cur.split()[0] if cur else f"${price}",
@@ -2143,6 +2191,444 @@ def parse_massed(rec, fx):
     return out
 
 
+
+def _blocked_or_challenge(rec: dict) -> bool:
+    """True when the fetch failed or the body is a challenge/error page, not a real listing."""
+    if not rec.get("ok") or not rec.get("body"):
+        return True
+    status = rec.get("status")
+    if status and int(status) >= 400:
+        return True
+    txt = textify(rec["body"][:8000])
+    if re.search(r"Just a moment|cf-browser-verification|attention required|access denied|Error Page \| eBay", txt, re.I):
+        return True
+    return False
+
+
+def parse_genius_instinct_catalog(rec, fx):
+    """Genius HPC public CSV catalogue. Official MI300X cost uses the single-module From (low) price only."""
+    if not rec.get("ok") or not rec.get("body"):
+        return []
+    raw = rec["body"].decode("utf-8-sig", "replace")
+    # Some responses may be HTML if the CSV URL is redirected.
+    if "<html" in raw[:200].lower():
+        return []
+    import csv as _csv
+    import io
+    out = []
+    reader = _csv.DictReader(io.StringIO(raw))
+    for row in reader:
+        model_txt = " ".join(str(row.get(k) or "") for k in ("Manufacturer", "Model", "Priced configuration", "Reference"))
+        inst = detect_instinct_model(model_txt)
+        if not inst:
+            continue
+        ref = (row.get("Reference") or "").strip()
+        cfg = (row.get("Priced configuration") or "").strip()
+        low = money_to_float(row.get("Low EUR ex VAT") or "")
+        high = money_to_float(row.get("High EUR ex VAT") or "")
+        is_platform = bool(re.search(r"8\s*×|8\s*x|UBB|platform|excludes CPU", cfg, re.I)) or inst in cfg and "8" in cfg and "UBB" in cfg.upper()
+        # Platform / 8-GPU + UBB lines are not a single-card cost anchor (UBB not deducted).
+        if is_platform or "UBB" in cfg.upper() or re.search(r"8\s*[×x]", cfg):
+            for price, bound in ((low, "low"), (high, "high")):
+                if not price:
+                    continue
+                out.append(enrich_observation(attach_fx(assign_model_key(obs(
+                    source_id="genius_instinct_catalog", source_name="Genius HPC Instinct catalogue",
+                    source_url=rec["url"],
+                    observation_type="new_from_list_server", sold_vs_listed="new_list",
+                    model=inst, form_factor="OAM", vram_gb=AMD_VRAM_HINT.get(inst),
+                    condition="new", currency="EUR", price=price, unit="per_8gpu_server",
+                    vendor="AMD", raw_price_text=f"€{price:,.2f}",
+                    notes=(
+                        f"公开目录 8 卡+UBB {bound} 价，未税欧元，配置：{cfg}。"
+                        "未扣除 UBB/底板，不进入官方单卡成本法锚点。"
+                    ),
+                    include_in_cost_new=0,
+                    quantity_config=cfg or "8-gpu + UBB",
+                    raw_label=f"Genius catalogue {ref or inst} 8x {bound} €{price:,.2f}",
+                )), fx)))
+            continue
+        form = "PCIe" if inst == "MI210" else "OAM"
+        official = (inst == "MI300X" and not is_platform)
+        if low:
+            notes = (
+                f"公开目录单模块 From（区间下限）€{low:,.2f} ex-VAT；配置：{cfg}。"
+                "经销商起价，不是 AMD MSRP，也不是美国渠道价。"
+            )
+            if official:
+                notes += " 作为 MI300X 独立子指数成本法临时锚点（取 From，不用区间中位）。"
+            else:
+                notes += "【不进入 v0 官方计算】AMD 观察，仅作研究/校准。"
+            out.append(enrich_observation(attach_fx(assign_model_key(obs(
+                source_id="genius_instinct_catalog", source_name="Genius HPC Instinct catalogue",
+                source_url=rec["url"],
+                observation_type="new_from_list", sold_vs_listed="new_list",
+                model=inst, form_factor=form, vram_gb=AMD_VRAM_HINT.get(inst),
+                condition="new", currency="EUR", price=low, unit="per_card",
+                vendor="AMD", raw_price_text=f"€{low:,.2f}",
+                notes=notes,
+                include_in_cost_new=1 if official else 0,
+                quantity_config=cfg or "1-gpu module",
+                raw_label=f"Genius catalogue {ref or inst} From €{low:,.2f}",
+            )), fx)))
+        if high and high != low:
+            out.append(enrich_observation(attach_fx(assign_model_key(obs(
+                source_id="genius_instinct_catalog", source_name="Genius HPC Instinct catalogue",
+                source_url=rec["url"],
+                observation_type="new_from_list_high", sold_vs_listed="new_list",
+                model=inst, form_factor=form, vram_gb=AMD_VRAM_HINT.get(inst),
+                condition="new", currency="EUR", price=high, unit="per_card",
+                vendor="AMD", raw_price_text=f"€{high:,.2f}",
+                notes=(
+                    f"公开目录单模块区间上限 €{high:,.2f} ex-VAT；配置：{cfg}。"
+                    "只作观察，不进入成本法锚点，以免把区间当成两个独立经销商报价。"
+                ),
+                include_in_cost_new=0,
+                quantity_config=cfg or "1-gpu module",
+                raw_label=f"Genius catalogue {ref or inst} High €{high:,.2f}",
+            )), fx)))
+    return out
+
+
+def parse_tensorwave(rec, fx):
+    """TensorWave product-page 'Starting at' GPU-hour prices. Tenor is unconfirmed; not official income."""
+    if _blocked_or_challenge(rec):
+        return []
+    txt = rec["body"].decode("utf-8", "replace")
+    out = []
+    seen = set()
+    for m in re.finditer(
+        r'"modelId":"(MI[0-9]+X)","title":"([^"]+)"[\s\S]{0,500}?"coolingLabel":"([^"]+)","price":"\$([0-9.]+)","priceUnit":"([^"]+)"',
+        txt,
+    ):
+        inst = detect_instinct_model(m.group(1))
+        if not inst:
+            continue
+        cooling = m.group(3)
+        price = money_to_float(m.group(4))
+        unit_txt = m.group(5)
+        key = (inst, cooling, price)
+        if not price or key in seen:
+            continue
+        seen.add(key)
+        vram = AMD_VRAM_HINT.get(inst)
+        fm = re.search(r"Memory:\s*(\d+)\s*GB", m.group(0))
+        if fm:
+            vram = int(fm.group(1))
+        out.append(_rental_row(
+            fx, "tensorwave", "TensorWave accelerators", rec["url"],
+            inst, "OAM", vram, price,
+            notes=(
+                f"页面标 Starting at，制冷={cooling}，单位={unit_txt}。"
+                "未写明按需/预留期限，故不进入官方收益法中位数。"
+                + ("" if inst == "MI300X" else "【不进入 v0 官方计算】AMD 观察，仅作研究/校准。")
+            ),
+            include=False,
+            label=f"TensorWave {inst} {cooling} starting at ${price}/GPU-hr",
+            tenor="unconfirmed", vendor="AMD",
+            raw_price_text=f"${price}{unit_txt}",
+            quantity_config=cooling,
+        ))
+    return out
+
+
+def parse_hotaisle(rec, fx):
+    """Hot Aisle usage-based on-demand list prices for MI300X VMs and 8x bare metal."""
+    if _blocked_or_challenge(rec):
+        return []
+    txt = textify(rec["body"])
+    out = []
+    specs = [
+        (r"\$2\.99/GPU/hr.{0,80}?1,\s*2,\s*and\s*4x MI300X VMs", 2.99, "on-demand",
+         "1, 2, and 4x MI300X VMs", "Hot Aisle MI300X VM $2.99/GPU/hr"),
+        (r"8x bare metal.{0,80}?\$3\.39/GPU/hr", 3.39, "on-demand",
+         "8x MI300X bare metal", "Hot Aisle MI300X 8x bare metal $3.39/GPU/hr"),
+    ]
+    # Fallback if punctuation/spacing differs but both prices and MI300X are visible.
+    if not any(re.search(pat, txt, re.I | re.S) for pat, *_ in specs):
+        if re.search(r"\$2\.99/GPU/hr", txt) and re.search(r"MI300X VMs", txt, re.I):
+            specs[0] = (r"\$2\.99/GPU/hr",) + specs[0][1:]
+        if re.search(r"\$3\.39/GPU/hr", txt) and re.search(r"bare metal", txt, re.I):
+            specs[1] = (r"\$3\.39/GPU/hr",) + specs[1][1:]
+    for pat, price, tenor, qty, label in specs:
+        if not re.search(pat, txt, re.I | re.S):
+            continue
+        out.append(_rental_row(
+            fx, "hotaisle", "Hot Aisle pricing", rec["url"],
+            "MI300X", "OAM", 192, price,
+            notes=(
+                "页面为 usage-based / on-demand 价目（按小时列出）。"
+                f"配置：{qty}。进入 MI300X 独立子指数收益法中位数。"
+            ),
+            include=True,
+            label=label,
+            tenor=tenor, vendor="AMD",
+            raw_price_text=f"${price}/GPU/hr",
+            quantity_config=qty,
+        ))
+    return out
+
+
+def parse_oracle_mi300x(rec, fx):
+    """OCI public price list API, PAY_AS_YOU_GO GPU Per Hour. Hyperscaler; observation only."""
+    if not rec.get("ok") or not rec.get("body"):
+        return []
+    try:
+        data = json.loads(rec["body"].decode("utf-8"))
+    except Exception:
+        return []
+    out = []
+    last_upd = data.get("lastUpdated")
+    for item in data.get("items") or []:
+        if not re.search(r"MI300X", str(item.get("displayName") or "") + " " + str(item.get("partNumber") or ""), re.I):
+            continue
+        for loc in item.get("currencyCodeLocalizations") or []:
+            if (loc.get("currencyCode") or "").upper() != "USD":
+                continue
+            for pr in loc.get("prices") or []:
+                model_name = pr.get("model") or ""
+                val = pr.get("value")
+                if val is None:
+                    continue
+                price = float(val)
+                tenor = "on-demand" if model_name.upper() == "PAY_AS_YOU_GO" else "unconfirmed"
+                out.append(_rental_row(
+                    fx, "oracle_mi300x", "Oracle Cloud MI300X price list", rec["url"],
+                    "MI300X", "OAM", 192, price,
+                    notes=(
+                        f"官方价目 API part {item.get('partNumber')}，{item.get('displayName')}，"
+                        f"metric={item.get('metricName')}，model={model_name}，lastUpdated={last_upd}。"
+                        "超大规模云单价含主机/网络/平台，与 neocloud 单卡价口径不同，待校准前不进入官方收益法中位数。"
+                    ),
+                    include=False,
+                    label=f"OCI {item.get('partNumber')} {model_name} ${price}/GPU-hr",
+                    tenor=tenor, vendor="AMD",
+                    raw_price_text=f"${price}/GPU-hr",
+                    region="OCI list (currency USD)",
+                ))
+    return out
+
+
+def parse_azure_mi300x(rec, fx):
+    """Azure Retail Prices API, eastus2 ND96isr_MI300X_v5. Hyperscaler; observation only."""
+    if not rec.get("ok") or not rec.get("body"):
+        return []
+    try:
+        data = json.loads(rec["body"].decode("utf-8"))
+    except Exception:
+        return []
+    out = []
+    seen = set()
+    for it in data.get("Items") or []:
+        product = it.get("productName") or ""
+        # Prefer Linux (product name without 'Windows').
+        if re.search(r"Windows", product, re.I):
+            continue
+        sku = it.get("skuName") or it.get("armSkuName") or ""
+        ptype = it.get("type") or it.get("priceType") or ""
+        unit_price = it.get("unitPrice")
+        if unit_price is None:
+            continue
+        region = it.get("armRegionName") or ""
+        term = it.get("reservationTerm")
+        key = (sku, ptype, term, region, unit_price)
+        if key in seen:
+            continue
+        seen.add(key)
+        node = float(unit_price)
+        if "Spot" in sku:
+            tenor = "spot"
+            qty = "8-gpu node; Linux Spot eastus2"
+            notes_prefix = "Azure Retail Prices API，Linux Spot Consumption，节点小时价已除以 8。"
+        elif "Low Priority" in sku:
+            tenor = "spot"
+            qty = "8-gpu node; Linux Low Priority eastus2"
+            notes_prefix = "Azure Retail Prices API，Linux Low Priority，节点小时价已除以 8。"
+        elif ptype == "Reservation":
+            tenor = "reserved"
+            qty = f"8-gpu node; {term or 'reservation'} eastus2"
+            notes_prefix = f"Azure Retail Prices API，Reservation {term}，单位是预留总价而非按需小时，仅作观察。"
+            # Do not convert reservation totals into a fake hourly rate.
+            out.append(enrich_observation(attach_fx(assign_model_key(obs(
+                source_id="azure_mi300x", source_name="Azure Retail Prices MI300X",
+                source_url=rec["url"],
+                observation_type="rental_list", sold_vs_listed="rental_list",
+                model="MI300X", form_factor="OAM", vram_gb=192, currency="USD",
+                price=node, unit="reservation_total", vendor="AMD",
+                tenor="reserved", region=region,
+                raw_price_text=f"${node:,.2f} {term}",
+                notes=notes_prefix + " 超大规模云口径待校准，不进入官方收益法中位数。",
+                include_in_income=0,
+                quantity_config=qty,
+                raw_label=f"Azure {sku} {ptype} {term} ${node:,.2f}",
+            )), fx)))
+            continue
+        elif ptype == "Consumption":
+            tenor = "on-demand"
+            qty = "8-gpu node; Linux Pay-as-you-go eastus2"
+            notes_prefix = "Azure Retail Prices API，Linux Consumption（Pay as you go），节点小时价已除以 8。"
+        else:
+            tenor = "unconfirmed"
+            qty = f"8-gpu node; {ptype} eastus2"
+            notes_prefix = f"Azure Retail Prices API，type={ptype}，节点小时价已除以 8。"
+        out.append(attach_fx(assign_model_key(obs(
+            source_id="azure_mi300x", source_name="Azure Retail Prices MI300X",
+            source_url=rec["url"],
+            observation_type="rental_list", sold_vs_listed="rental_list",
+            model="MI300X", form_factor="OAM", vram_gb=192, currency="USD",
+            price=node, unit="per_8gpu_hour", vendor="AMD",
+            tenor=tenor, region=region,
+            raw_price_text=f"${node}/node-hr",
+            notes=notes_prefix + " 超大规模云单价含主机/网络/平台，待校准前不进入官方收益法中位数。",
+            include_in_income=0,
+            quantity_config=qty,
+            raw_label=f"Azure {sku} {ptype} ${node}/node-hr",
+        )), fx))
+        out[-1] = enrich_observation(out[-1])
+    return out
+
+
+def parse_serverbuyback_index(rec, fx):
+    """ServerBuyback published used range (not a listing or sold tape). Observation only."""
+    if _blocked_or_challenge(rec):
+        return []
+    raw = rec["body"].decode("utf-8", "replace")
+    m = re.search(
+        r"<tr><td>AMD Instinct</td><td>MI300X</td><td>[^<]*</td><td>\$([0-9,]+)[–-]([0-9,]+)</td>",
+        raw,
+    )
+    if not m:
+        return []
+    low = money_to_float(m.group(1))
+    high = money_to_float(m.group(2))
+    upd = None
+    um = re.search(r"Last updated:\s*([0-9]{1,2}\s+\w+\s+20\d{2})", textify(rec["body"]), re.I)
+    if um:
+        upd = um.group(1)
+    else:
+        dm = re.search(r'"dateModified":\s*"(20\d{2}-\d{2}-\d{2})"', raw)
+        if dm:
+            upd = dm.group(1)
+    note_date = f"来源标注更新于 {upd}。" if upd else "来源页自称 June 2026 区间、按月刷新。"
+    return [enrich_observation(attach_fx(assign_model_key(obs(
+        source_id="serverbuyback_index", source_name="ServerBuyback GPU resale value index",
+        source_url=rec["url"],
+        observation_type="broker_range", sold_vs_listed="range_not_transaction",
+        model="MI300X", form_factor="OAM", vram_gb=192, condition="used_range",
+        currency="USD", price=None, unit="per_card", vendor="AMD",
+        raw_price_text=f"${m.group(1)}–{m.group(2)}",
+        notes=(
+            f"经纪商公开二手区间 ${m.group(1)}–{m.group(2)}，不是成交，也不是可执行挂牌。"
+            f"{note_date} 该机构称区间来自公开二手市场与自身成交观察的汇总。"
+            "不得进入官方市场法中位数，也不用区间中位去填一个假市价。"
+        ),
+        include_in_market=0,
+        raw_label=f"ServerBuyback MI300X used range ${m.group(1)}–{m.group(2)}",
+    )), fx))]
+
+
+def parse_evelltech_mi300x(rec, fx):
+    """EvellTech used listing, if the public page is reachable. Do not bypass a 403/challenge."""
+    if _blocked_or_challenge(rec):
+        return []
+    raw = rec["body"].decode("utf-8", "replace")
+    txt = textify(raw)
+    if not re.search(r"MI300X", txt, re.I):
+        return []
+    # Prefer a visible product price, not invent from prior research.
+    price = None
+    pm = re.search(r'["\']price["\']\s*:\s*["\']?([0-9]+(?:\.[0-9]+)?)', raw, re.I)
+    if pm:
+        price = money_to_float(pm.group(1))
+    if price is None:
+        pm = re.search(r"\$\s*([0-9,]+(?:\.[0-9]+)?)", txt)
+        if pm:
+            price = money_to_float(pm.group(1))
+    if not price:
+        return []
+    cond = "used" if re.search(r"used|working", txt, re.I) else None
+    form = "OAM" if re.search(r"\bOAM\b", txt, re.I) else None
+    return [enrich_observation(attach_fx(assign_model_key(obs(
+        source_id="evelltech_mi300x", source_name="EvellTech MI300X listing",
+        source_url=rec["url"],
+        observation_type="listed", sold_vs_listed="listed",
+        model="MI300X", form_factor=form or "OAM", vram_gb=192,
+        condition=cond, currency="USD", price=price, unit="per_card", vendor="AMD",
+        raw_price_text=f"${price:,.2f}",
+        notes="经销商二手挂牌，非成交。机龄未在页面明确写出则留空。",
+        include_in_market=1,
+        raw_label=f"EvellTech MI300X ${price:,.2f}",
+    )), fx))]
+
+
+def parse_elipic_mi300x(rec, fx):
+    """Elipic used listing, if the page is healthy. Quality flags historically heavy; keep off official market until clean."""
+    if _blocked_or_challenge(rec):
+        return []
+    raw = rec["body"].decode("utf-8", "replace")
+    if re.search(r"internal_server_error|critical error", raw, re.I):
+        return []
+    txt = textify(raw)
+    if not re.search(r"MI300X", txt, re.I):
+        return []
+    price = None
+    pm = re.search(r"\$\s*([0-9,]+(?:\.[0-9]+)?)", txt)
+    if pm:
+        price = money_to_float(pm.group(1))
+    if not price:
+        return []
+    quality = []
+    if re.search(r"Sxm", txt, re.I) and not re.search(r"\bOAM\b", txt):
+        quality.append("页面把形态写成 SXM，MI300X 应为 OAM")
+    notes = "经销商二手挂牌，非成交。"
+    if quality:
+        notes += "质量旗标：" + "；".join(quality) + "。在核验前不进入官方市场法。"
+    return [enrich_observation(attach_fx(assign_model_key(obs(
+        source_id="elipic_mi300x", source_name="Elipic Partners MI300X listing",
+        source_url=rec["url"],
+        observation_type="listed", sold_vs_listed="listed",
+        model="MI300X", form_factor="OAM", vram_gb=192,
+        condition="used", currency="USD", price=price, unit="per_card", vendor="AMD",
+        raw_price_text=f"${price:,.2f}",
+        notes=notes,
+        include_in_market=0,
+        raw_label=f"Elipic MI300X ${price:,.2f}",
+    )), fx))]
+
+
+def parse_vultr_pricing(rec, fx):
+    """Vultr public pricing. 'Starting at' / blocked pages are not official income. Do not bypass 403."""
+    if _blocked_or_challenge(rec):
+        return []
+    txt = textify(rec["body"])
+    out = []
+    for m in re.finditer(
+        r"(MI3[0-9]{2}X).{0,160}?\$([0-9]+\.[0-9]+)",
+        txt, re.I | re.S,
+    ):
+        inst = detect_instinct_model(m.group(1))
+        price = money_to_float(m.group(2))
+        if not inst or not price:
+            continue
+        ctx = m.group(0)
+        starting = bool(re.search(r"starting at|starting from", ctx, re.I))
+        out.append(_rental_row(
+            fx, "vultr_pricing", "Vultr pricing", rec["url"],
+            inst, "OAM", AMD_VRAM_HINT.get(inst), price,
+            notes=(
+                "Vultr 公开页价格"
+                + ("，页面为 Starting at / Starting from 起价，期限待确认。" if starting else "。")
+                + " 不进入官方收益法中位数。"
+            ),
+            include=False,
+            label=f"Vultr {inst} ${price}/hr" + (" starting at" if starting else ""),
+            tenor="unconfirmed", vendor="AMD",
+            raw_price_text=f"${price}",
+        ))
+    return out
+
+
+
 SOURCE_PLAN = [
     {"id": "fx_usd", "url": "https://open.er-api.com/v6/latest/USD", "method": "GET", "parser": None},
     {"id": "anchorgpu", "url": "https://anchorgpu.com/used-gpus", "method": "GET", "parser": parse_anchorgpu},
@@ -2196,6 +2682,39 @@ SOURCE_PLAN = [
     {"id": "ebay_active",
      "url": "https://www.ebay.com/sch/i.html?_nkw=NVIDIA+H100&_ipg=60",
      "method": "GET", "parser": None, "expect_block": True},
+    {"id": "genius_instinct_catalog",
+     "url": "https://geniushpc.com/pricing/GeniusHPC-price-catalogue.csv",
+     "method": "GET", "parser": parse_genius_instinct_catalog},
+    {"id": "tensorwave",
+     "url": "https://tensorwave.com/products/accelerators/amd-mi300x",
+     "method": "GET", "parser": parse_tensorwave},
+    {"id": "hotaisle",
+     "url": "https://hotaisle.xyz/pricing",
+     "method": "GET", "parser": parse_hotaisle},
+    {"id": "oracle_mi300x",
+     "url": "https://apexapps.oracle.com/pls/apex/cetools/api/v1/products/?partNumber=B109485&currencyCode=USD",
+     "method": "GET", "parser": parse_oracle_mi300x},
+    {"id": "azure_mi300x",
+     "url": "https://prices.azure.com/api/retail/prices?%24filter=armSkuName+eq+%27Standard_ND96isr_MI300X_v5%27+and+armRegionName+eq+%27eastus2%27",
+     "method": "GET", "parser": parse_azure_mi300x},
+    {"id": "serverbuyback_index",
+     "url": "https://serverbuyback.com/resources/gpu-resale-value-index/",
+     "method": "GET", "parser": parse_serverbuyback_index},
+    {"id": "evelltech_mi300x",
+     "url": "https://evelltech.com/product/mi300x/",
+     "method": "GET", "parser": parse_evelltech_mi300x, "expect_block": True},
+    {"id": "elipic_mi300x",
+     "url": "https://www.elipicpartners.com/item/amd-instinct-mi300x-192gb-hbm3-gpu-graph",
+     "method": "GET", "parser": parse_elipic_mi300x, "expect_block": True},
+    {"id": "vultr_pricing",
+     "url": "https://www.vultr.com/pricing/",
+     "method": "GET", "parser": parse_vultr_pricing, "expect_block": True},
+    {"id": "ebay_sold_mi300x",
+     "url": "https://www.ebay.com/sch/i.html?_nkw=AMD+Instinct+MI300X&LH_Sold=1&LH_Complete=1&_ipg=60",
+     "method": "GET", "parser": None, "expect_block": True},
+    {"id": "ebay_active_mi300x",
+     "url": "https://www.ebay.com/sch/i.html?_nkw=AMD+Instinct+MI300X&_ipg=60",
+     "method": "GET", "parser": None, "expect_block": True},
 ]
 
 
@@ -2203,7 +2722,7 @@ def compute_index(observations, asof_date_pt, computed_at_utc, computed_at_pt):
     observations = drop_competitor_observations(list(observations or []), context="compute_index")
     rows = []
     per_model = {}
-    for key in MODEL_KEYS:
+    for key in OFFICIAL_INDEX_KEYS:
         mkt = [o["usd_per_card"] for o in observations
                if is_official(o, "include_in_market") and o.get("model_key") == key and o.get("usd_per_card")]
         inc_r = [o["usd_per_gpu_hour"] for o in observations
@@ -2254,20 +2773,22 @@ def compute_index(observations, asof_date_pt, computed_at_utc, computed_at_pt):
         per_model[key] = rec
         rows.append(rec)
 
-    navs = [per_model[k]["nav_indicative_usd"] for k in MODEL_KEYS if per_model[k]["nav_indicative_usd"] is not None]
+    navs = [per_model[k]["nav_indicative_usd"] for k in COMPOSITE_KEYS if per_model[k]["nav_indicative_usd"] is not None]
     composite = (sum(navs) / len(navs)) if navs else None
     rows.append({
         "asof_date_pt": asof_date_pt, "computed_at_utc": computed_at_utc, "computed_at_pt": computed_at_pt,
         "model_key": "COMPOSITE", "market_usd": None, "income_usd": None, "cost_usd": None,
         "nav_indicative_usd": composite, "market_n": None, "income_n": None, "cost_n": None,
         "rental_median_usd_per_hour": None, "new_card_usd": None,
-        "quality_flag": "equal_weight_of_four_models;installed_base_weights=to-be-calibrated;sold_n=0",
+        "quality_flag": "equal_weight_of_four_nvidia_models;mi300x_excluded_from_composite;installed_base_weights=to-be-calibrated;sold_n=0",
         "assumptions_json": json.dumps(ASSUMPTIONS, ensure_ascii=False),
         "breakdown_json": json.dumps({
             "components": {k: None if per_model[k]["nav_indicative_usd"] is None else round(per_model[k]["nav_indicative_usd"], 2)
-                           for k in MODEL_KEYS},
+                           for k in COMPOSITE_KEYS},
             "n_models": len(navs),
             "composite_usd": None if composite is None else round(composite, 2),
+            "composite_members": list(COMPOSITE_KEYS),
+            "excluded_subindices": [k for k in OFFICIAL_INDEX_KEYS if k not in COMPOSITE_KEYS],
         }, ensure_ascii=False),
     })
     return rows
@@ -2279,6 +2800,12 @@ def official_contributor_ids() -> set[str]:
     for src in SOURCE_PLAN:
         sid = src["id"]
         if sid == "fx_usd" or sid in OBSERVATION_ONLY_SOURCES:
+            continue
+        # Expected blocks (eBay, Cloudflare challenge pages, etc.) are not
+        # required official contributors. A standing 403 must not trip the
+        # jump guard on unrelated models. If a fetch later succeeds, the
+        # parsed observations can still enter official legs via include flags.
+        if src.get("expect_block"):
             continue
         if competitor_exclusion_reason(sid, src.get("name"), src.get("url")):
             continue
@@ -2415,8 +2942,10 @@ def apply_publication_guards(
     by_key = {r["model_key"]: dict(r) for r in index_rows}
 
     any_model_carried = False
-    for key in MODEL_KEYS:
-        rec = by_key[key]
+    for key in OFFICIAL_INDEX_KEYS:
+        rec = by_key.get(key)
+        if rec is None:
+            continue
         _init_guard_fields(rec, official_ok, failed_ids, run_id)
         raw_nav = rec["raw_nav_indicative_usd"]
         today_legs = legs_present(rec)
@@ -2455,8 +2984,8 @@ def apply_publication_guards(
         raw_comp = comp["raw_nav_indicative_usd"]
         pub_navs = [
             by_key[k]["nav_indicative_usd"]
-            for k in MODEL_KEYS
-            if by_key[k].get("nav_indicative_usd") is not None
+            for k in COMPOSITE_KEYS
+            if k in by_key and by_key[k].get("nav_indicative_usd") is not None
         ]
         mixed = (sum(pub_navs) / len(pub_navs)) if pub_navs else None
         comp["nav_indicative_usd"] = mixed
@@ -2466,13 +2995,16 @@ def apply_publication_guards(
             bd = {}
         bd["components"] = {
             k: None if by_key[k].get("nav_indicative_usd") is None else round(float(by_key[k]["nav_indicative_usd"]), 2)
-            for k in MODEL_KEYS
+            for k in COMPOSITE_KEYS
+            if k in by_key
         }
+        bd["composite_members"] = list(COMPOSITE_KEYS)
+        bd["excluded_subindices"] = [k for k in OFFICIAL_INDEX_KEYS if k not in COMPOSITE_KEYS]
         bd["n_models"] = len(pub_navs)
         bd["composite_usd"] = None if mixed is None else round(float(mixed), 2)
         bd["raw_composite_usd"] = None if raw_comp is None else round(float(raw_comp), 2)
         reasons = []
-        carried_models = [k for k in MODEL_KEYS if _is_carried_row(by_key[k])]
+        carried_models = [k for k in COMPOSITE_KEYS if k in by_key and _is_carried_row(by_key[k])]
         prior_c = load_last_normal(conn, "COMPOSITE", asof_date_pt)
         if carried_models:
             reasons.append("component_carried:" + ",".join(carried_models))
@@ -2526,7 +3058,7 @@ def same_day_run_is_worse(
         return f"fewer official sources ({new_official_ok} < {old_official_ok})"
     worse = []
     new_by = {r["model_key"]: r for r in new_rows}
-    for key in MODEL_KEYS:
+    for key in OFFICIAL_INDEX_KEYS:
         if key not in existing or key not in new_by:
             continue
         old_legs = legs_present(existing[key])
@@ -2543,8 +3075,8 @@ def load_index_rows_for_date(conn: sqlite3.Connection, asof_date_pt: str) -> lis
         "SELECT * FROM daily_index WHERE asof_date_pt=? ORDER BY model_key",
         (asof_date_pt,),
     ).fetchall()]
-    # Keep MODEL_KEYS order then COMPOSITE, matching compute_index.
-    order = {k: i for i, k in enumerate(MODEL_KEYS + ["COMPOSITE"])}
+    # Keep official sub-index order, then COMPOSITE, matching compute_index.
+    order = {k: i for i, k in enumerate(OFFICIAL_INDEX_KEYS + ["COMPOSITE"])}
     rows.sort(key=lambda r: order.get(r["model_key"], 99))
     return rows
 
@@ -2618,7 +3150,8 @@ def write_outputs(conn, run_id, asof_date_pt, computed_at_pt, computed_at_utc, h
         "SELECT * FROM daily_index ORDER BY asof_date_pt, model_key"
     ).fetchall()]
     latest_obs = [dict(r) for r in conn.execute(
-        "SELECT * FROM observations WHERE run_id=? ORDER BY source_id, id", (run_id,)
+        "SELECT * FROM observations WHERE asof_date_pt=? ORDER BY run_id, source_id, id",
+        (asof_date_pt,),
     ).fetchall()]
     sold_n = sum(1 for o in observations if o.get("sold_vs_listed") == "sold")
 
@@ -2693,13 +3226,15 @@ def write_outputs(conn, run_id, asof_date_pt, computed_at_pt, computed_at_utc, h
             latest["composite"] = item
         else:
             latest["models"][r["model_key"]] = item
+    latest["composite_members"] = list(COMPOSITE_KEYS)
+    latest["separate_subindices"] = [k for k in OFFICIAL_INDEX_KEYS if k not in COMPOSITE_KEYS]
 
     history = {
         "generated_at_pt": computed_at_pt,
         "series": {},
         "dates": sorted({r["asof_date_pt"] for r in hist_rows}),
     }
-    for key in MODEL_KEYS + ["COMPOSITE"]:
+    for key in OFFICIAL_INDEX_KEYS + ["COMPOSITE"]:
         pts = [r for r in hist_rows if r["model_key"] == key]
         history["series"][key] = {
             "label": MODEL_LABELS.get(key, key),
