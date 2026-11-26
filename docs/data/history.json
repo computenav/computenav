@@ -233,6 +233,29 @@
           "carry_reason": null,
           "carried_from_asof": null,
           "legs_present": 3
+        },
+        {
+          "asof_date_pt": "2026-11-26",
+          "computed_at_pt": "2026-11-26T06:57:35.614419-08:00",
+          "nav_indicative_usd": 20038.82,
+          "market_usd": null,
+          "income_usd": 41123.05,
+          "cost_usd": null,
+          "market_n": 1,
+          "income_n": 11,
+          "cost_n": 1,
+          "insufficient_sample": {
+            "market": true,
+            "income": false,
+            "cost": true
+          },
+          "nav_hidden": false,
+          "carried_forward": false,
+          "stale": false,
+          "dod_excluded": false,
+          "carry_reason": null,
+          "carried_from_asof": null,
+          "legs_present": 3
         }
       ]
     },
@@ -450,6 +473,29 @@
           "asof_date_pt": "2026-11-25",
           "computed_at_pt": "2026-11-25T13:56:00.673570-08:00",
           "nav_indicative_usd": 16652.86,
+          "market_usd": null,
+          "income_usd": 26032.52,
+          "cost_usd": null,
+          "market_n": 2,
+          "income_n": 3,
+          "cost_n": 1,
+          "insufficient_sample": {
+            "market": true,
+            "income": false,
+            "cost": true
+          },
+          "nav_hidden": false,
+          "carried_forward": false,
+          "stale": false,
+          "dod_excluded": false,
+          "carry_reason": null,
+          "carried_from_asof": null,
+          "legs_present": 3
+        },
+        {
+          "asof_date_pt": "2026-11-26",
+          "computed_at_pt": "2026-11-26T06:57:35.614419-08:00",
+          "nav_indicative_usd": 16880.94,
           "market_usd": null,
           "income_usd": 26032.52,
           "cost_usd": null,
@@ -703,6 +749,29 @@
           "carry_reason": null,
           "carried_from_asof": null,
           "legs_present": 3
+        },
+        {
+          "asof_date_pt": "2026-11-26",
+          "computed_at_pt": "2026-11-26T06:57:35.614419-08:00",
+          "nav_indicative_usd": null,
+          "market_usd": 7270.91,
+          "income_usd": 14786.47,
+          "cost_usd": null,
+          "market_n": 3,
+          "income_n": 9,
+          "cost_n": 2,
+          "insufficient_sample": {
+            "market": false,
+            "income": false,
+            "cost": true
+          },
+          "nav_hidden": true,
+          "carried_forward": false,
+          "stale": false,
+          "dod_excluded": false,
+          "carry_reason": null,
+          "carried_from_asof": null,
+          "legs_present": 3
         }
       ]
     },
@@ -938,6 +1007,29 @@
           "carry_reason": null,
           "carried_from_asof": null,
           "legs_present": 1
+        },
+        {
+          "asof_date_pt": "2026-11-26",
+          "computed_at_pt": "2026-11-26T06:57:35.614419-08:00",
+          "nav_indicative_usd": 20721.89,
+          "market_usd": null,
+          "income_usd": 20721.89,
+          "cost_usd": null,
+          "market_n": 0,
+          "income_n": 4,
+          "cost_n": 0,
+          "insufficient_sample": {
+            "market": false,
+            "income": false,
+            "cost": false
+          },
+          "nav_hidden": false,
+          "carried_forward": false,
+          "stale": false,
+          "dod_excluded": false,
+          "carry_reason": null,
+          "carried_from_asof": null,
+          "legs_present": 1
         }
       ]
     },
@@ -1063,6 +1155,18 @@
           "carry_reason": null,
           "carried_from_asof": null,
           "legs_present": null
+        },
+        {
+          "asof_date_pt": "2026-11-26",
+          "computed_at_pt": "2026-11-26T06:57:35.614419-08:00",
+          "nav_indicative_usd": null,
+          "nav_hidden": true,
+          "carried_forward": false,
+          "stale": false,
+          "dod_excluded": false,
+          "carry_reason": null,
+          "carried_from_asof": null,
+          "legs_present": null
         }
       ]
     },
@@ -1072,6 +1176,29 @@
         {
           "asof_date_pt": "2026-11-25",
           "computed_at_pt": "2026-11-25T13:56:00.673570-08:00",
+          "nav_indicative_usd": null,
+          "market_usd": null,
+          "income_usd": 31134.89,
+          "cost_usd": null,
+          "market_n": 0,
+          "income_n": 5,
+          "cost_n": 1,
+          "insufficient_sample": {
+            "market": false,
+            "income": false,
+            "cost": true
+          },
+          "nav_hidden": true,
+          "carried_forward": false,
+          "stale": false,
+          "dod_excluded": false,
+          "carry_reason": null,
+          "carried_from_asof": null,
+          "legs_present": 2
+        },
+        {
+          "asof_date_pt": "2026-11-26",
+          "computed_at_pt": "2026-11-26T06:57:35.614419-08:00",
           "nav_indicative_usd": null,
           "market_usd": null,
           "income_usd": 31134.89,
@@ -1105,7 +1232,8 @@
     "2026-11-22",
     "2026-11-23",
     "2026-11-24",
-    "2026-11-25"
+    "2026-11-25",
+    "2026-11-26"
   ],
-  "generated_at_pt": "2026-11-25T13:56:00.673570-08:00"
+  "generated_at_pt": "2026-11-26T06:57:35.614419-08:00"
 }
