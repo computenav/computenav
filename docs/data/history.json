@@ -236,7 +236,7 @@
         },
         {
           "asof_date_pt": "2026-11-26",
-          "computed_at_pt": "2026-11-26T06:57:35.614419-08:00",
+          "computed_at_pt": "2026-11-26T13:49:48.472044-08:00",
           "nav_indicative_usd": 20038.82,
           "market_usd": null,
           "income_usd": 41123.05,
@@ -494,7 +494,7 @@
         },
         {
           "asof_date_pt": "2026-11-26",
-          "computed_at_pt": "2026-11-26T06:57:35.614419-08:00",
+          "computed_at_pt": "2026-11-26T13:49:48.472044-08:00",
           "nav_indicative_usd": 16880.94,
           "market_usd": null,
           "income_usd": 26032.52,
@@ -752,7 +752,7 @@
         },
         {
           "asof_date_pt": "2026-11-26",
-          "computed_at_pt": "2026-11-26T06:57:35.614419-08:00",
+          "computed_at_pt": "2026-11-26T13:49:48.472044-08:00",
           "nav_indicative_usd": null,
           "market_usd": 7270.91,
           "income_usd": 14786.47,
@@ -1010,7 +1010,7 @@
         },
         {
           "asof_date_pt": "2026-11-26",
-          "computed_at_pt": "2026-11-26T06:57:35.614419-08:00",
+          "computed_at_pt": "2026-11-26T13:49:48.472044-08:00",
           "nav_indicative_usd": 20721.89,
           "market_usd": null,
           "income_usd": 20721.89,
@@ -1158,7 +1158,7 @@
         },
         {
           "asof_date_pt": "2026-11-26",
-          "computed_at_pt": "2026-11-26T06:57:35.614419-08:00",
+          "computed_at_pt": "2026-11-26T13:49:48.472044-08:00",
           "nav_indicative_usd": null,
           "nav_hidden": true,
           "carried_forward": false,
@@ -1198,7 +1198,7 @@
         },
         {
           "asof_date_pt": "2026-11-26",
-          "computed_at_pt": "2026-11-26T06:57:35.614419-08:00",
+          "computed_at_pt": "2026-11-26T13:49:48.472044-08:00",
           "nav_indicative_usd": null,
           "market_usd": null,
           "income_usd": 31134.89,
@@ -1235,5 +1235,5 @@
     "2026-11-25",
     "2026-11-26"
   ],
-  "generated_at_pt": "2026-11-26T06:57:35.614419-08:00"
+  "generated_at_pt": "2026-11-26T13:49:48.472044-08:00"
 }
