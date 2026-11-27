@@ -42,7 +42,8 @@ All income- and cost-approach parameters are **placeholders to be calibrated**; 
 
 1. `pipeline/run_daily.py` fetches public sources; a failing source is logged and does not stop the run. Raw snapshots, the SQLite database and listing-level observations are written to the runner's temporary directory and **discarded when the job ends** — they are never committed, uploaded as artifacts, or cached.
 2. `pipeline/export_public.py` turns the day's result into `docs/data/latest.json`, which contains **aggregates only**, and upserts the day's point into `docs/data/history.json` (repeated runs on the same PT date keep the last one).
-3. The workflow commits these two JSON files back to `main` and deploys `docs/` to GitHub Pages.
+3. `scripts/fetch_news.py` refreshes `docs/data/news.json` from public RSS/Atom feeds (headline, source, date and a link only). A failed fetch leaves the last file in place and does not fail the job.
+4. The workflow commits the public JSON files back to `main` and deploys `docs/` to GitHub Pages.
 
 **History continuity:** `docs/data/history.json` is itself the long-term public record. It lives in the repository and each run only adds or updates the current day, so `nav.db` does not need to be kept. The first point (2026-11-16) was produced by `pipeline/seed_from_db.py`, which reruns the upstream `run_daily.py --recompute-from-run` on a copy of the project's internal database (observation-only sources do not enter the official calculation).
 

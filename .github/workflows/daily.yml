@@ -11,9 +11,12 @@
 #     the job ends. They are NOT committed, NOT uploaded as artifacts and NOT
 #     cached (caches/artifacts of a public repo are readable by others).
 #   * Licence-restricted sources are skipped entirely (COMPUTENAV_SKIP_SOURCES).
-#   * Only docs/data/latest.json and docs/data/history.json (aggregates) are
+#   * Only docs/data/latest.json and docs/data/history.json (aggregates) and
+#     docs/data/news.json (third-party headline links, no article text) are
 #     committed back and published. export_public.py refuses to publish if a
 #     restricted source contributed observations.
+#   * News headlines are fetched best-effort from public RSS/Atom feeds; a
+#     failed fetch does not fail the job and leaves the last news.json in place.
 #   * History continuity: docs/data/history.json in the repo is the long-term
 #     record; each run upserts today's point into it. nav.db is rebuilt fresh
 #     every run and is not needed for history.
@@ -93,6 +96,11 @@ jobs:
       - name: Render methodology page
         run: python pipeline/render_methodology.py
 
+      - name: Fetch GPU news headlines (best-effort)
+        # A failed or empty fetch must not fail the job; keep the last news.json.
+        continue-on-error: true
+        run: python scripts/fetch_news.py --output docs/data/news.json || true
+
       - name: Check public files (USD only, English only, no hidden n<3 values)
         env:
           PRIV_LATEST: ${{ runner.temp }}/computenav-private/output/latest.json
@@ -109,14 +117,14 @@ jobs:
           if find docs \( -name '*.db' -o -name '*.bin' -o -name 'dashboard_data.json' -o -name 'raw_quotes_*' -o -name 'event_windows_*' -o -name '*.csv' \) | grep -q .; then
             echo "private file found under docs/"; exit 1
           fi
-          python -c "import json; [json.load(open(f)) for f in ('docs/data/latest.json','docs/data/history.json')]"
+          python -c "import json, pathlib; fs=['docs/data/latest.json','docs/data/history.json'] + (['docs/data/news.json'] if pathlib.Path('docs/data/news.json').exists() else []); [json.load(open(f)) for f in fs]"
 
       - name: Commit updated public JSON
         if: github.event_name != 'push'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add docs/data/latest.json docs/data/history.json docs/methodology.html
+          git add docs/data/latest.json docs/data/history.json docs/data/news.json docs/methodology.html
           if git diff --cached --quiet; then
             echo "no changes"
           else

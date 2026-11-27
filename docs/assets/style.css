@@ -49,3 +49,22 @@ table.legs{width:100%;border-collapse:collapse;margin:8px 0;font-size:14px}
 table.legs th{text-align:left;font-weight:600;padding:4px 8px 4px 0;vertical-align:top;white-space:nowrap}
 table.legs td{padding:4px 0;font-variant-numeric:tabular-nums}
 .badge.calib{background:#fff4e0;color:#9a5b00;border:1px solid #f0b54a;border-radius:4px;padding:0 5px;font-size:12px;white-space:nowrap}
+
+.news-section{margin:14px 0 0}
+.news-section h2{margin:0 0 8px}
+/* Show 3 rows; remaining items scroll inside the box. 1.4em line + 5px*2 padding + 1px rule. */
+.news{list-style:none;margin:0;padding:8px 10px 8px 16px;background:var(--card);border:1px solid var(--line);border-radius:10px;font-size:14px;line-height:1.4;max-height:calc(16px + 3 * (1.4em + 11px));overflow-x:hidden;overflow-y:auto;scrollbar-gutter:stable;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:#8b93a1 #f0f2f6}
+.news::-webkit-scrollbar{width:10px}
+.news::-webkit-scrollbar-track{background:#f0f2f6;border-radius:8px}
+.news::-webkit-scrollbar-thumb{background:#c5cad3;border-radius:8px;border:2px solid #f0f2f6}
+.news::-webkit-scrollbar-thumb:hover{background:#8b93a1}
+.news li{display:flex;flex-wrap:nowrap;align-items:baseline;gap:0 10px;padding:5px 0;border-bottom:1px solid var(--line);line-height:1.4}
+.news li:last-child{border-bottom:0}
+.news a{font-weight:550;text-decoration:none;flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.news a:hover{text-decoration:underline}
+.news-meta{color:var(--muted);font-size:12px;white-space:nowrap;margin-left:auto;flex:0 0 auto}
+.news-section .note{margin:6px 0 0}
+@media (pointer:coarse){
+  .news{scrollbar-width:auto}
+  .news::-webkit-scrollbar{width:12px}
+}

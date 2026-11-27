@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ComputeNAV · GPU NAV Index Dashboard</title>
 <meta name="description" content="ComputeNAV: indicative NAV for used H100/A100 GPUs, plus a separate AMD Instinct MI300X sub-index. High-school student research project. Indicative data only. Not investment advice.">
-<link rel="stylesheet" href="assets/style.css?v=20261125mi300x">
+<link rel="stylesheet" href="assets/style.css?v=20261127news">
 </head>
 <body>
 <header class="banner" role="note" aria-label="Disclaimer">
@@ -20,6 +20,12 @@
 <main>
   <h1>ComputeNAV <small>GPU NAV Index Dashboard</small></h1>
   <p class="lede">Daily indicative orderly-liquidation NAV (USD per card) for H100 SXM, H100 PCIe, A100 80GB and A100 40GB, equal-weighting the market, income and cost approaches. AMD Instinct MI300X is published as a separate sub-index and is not part of the composite.</p>
+
+  <section id="news-section" class="news-section" hidden>
+    <h2>GPU News</h2>
+    <ul id="news" class="news"></ul>
+    <p class="note">Headlines are links to third-party sources; not curated or endorsed.</p>
+  </section>
 
   <div id="error" class="error" hidden></div>
 
@@ -70,13 +76,13 @@
   <section>
     <h2>Methodology</h2>
     <p><a href="methodology.html">ComputeNAV Methodology v0</a> · <a href="methodology.md">Markdown source</a> ·
-      Data files: <a href="data/latest.json">latest.json</a>, <a href="data/history.json">history.json</a></p>
+      Data files: <a href="data/latest.json">latest.json</a>, <a href="data/history.json">history.json</a>, <a href="data/news.json">news.json</a></p>
   </section>
 </main>
 
 <footer>
   <p>ComputeNAV is a high-school student research project for learning purposes. Indicative data only; not investment advice; no warranty of accuracy. © 2026 ComputeNAV project authors. All rights reserved.</p>
 </footer>
-<script src="assets/app.js?v=20261125mi300x"></script>
+<script src="assets/app.js?v=20261127news"></script>
 </body>
 </html>

@@ -1,0 +1,54 @@
+{
+  "schema_version": 1,
+  "updated_at_pt": "2026-11-27T08:06:07-08:00",
+  "items": [
+    {
+      "title": "Additions to the Entity List",
+      "source": "Federal Register",
+      "date_pt": "2026-11-25",
+      "url": "https://www.federalregister.gov/documents/2026/11/25/2026-23999/additions-to-the-entity-list"
+    },
+    {
+      "title": "Addressing Remote Access to Advanced Semiconductors",
+      "source": "Federal Register",
+      "date_pt": "2026-11-19",
+      "url": "https://www.federalregister.gov/documents/2026/11/19/2026-23529/addressing-remote-access-to-advanced-semiconductors"
+    },
+    {
+      "title": "NVIDIA reportedly halts AI chip shipments to Southeast Asia",
+      "source": "Engadget",
+      "date_pt": "2026-11-26",
+      "url": "https://www.engadget.com/2329200/nvidia-reportedly-halts-chip-shipments-to-southeast-asia/"
+    },
+    {
+      "title": "U.S. adds Megaspeed to trade blacklist over export control concerns amid Nvidia controversy",
+      "source": "CNBC",
+      "date_pt": "2026-11-23",
+      "url": "https://www.cnbc.com/2026/11/24/us-adds-megaspeed-to-trade-blacklist-over-export-control-concerns-.html"
+    },
+    {
+      "title": "Nvidia Blackwell Chips Turn Up at China Site Tied to Alice Huang",
+      "source": "Bloomberg",
+      "date_pt": "2026-11-27",
+      "url": "https://news.google.com/rss/articles/CBMitgFBVV95cUxOajRDYnpkT2kwWEdlR2REeG93cnBZdkdsYmo3dTFmaVp3enZYN3Jid0RYVWZwNXJvcE00OG5FNjdwd0MzQXpFV1gzeUxkdnhxTVNoaGVNRmpnRllMTGY4emNtNW9VYnc4RWZVX0I2WExQNy1Ha21aV0FNWWVUb0FacnFLM01rUWRudjBCdGJpbGxCVUx3dl9KMEtZb0pyYURCTG1iWW5xUmNpaDlnc0lsMVpldmV6QQ?oc=5"
+    },
+    {
+      "title": "Intel’s Four-Year-Old Gaudi Chips Deliver 60% Higher Decode Throughput Than NVIDIA’s H100 in Qwen3.5-27B, As AI Software Optimizations...",
+      "source": "Wccftech",
+      "date_pt": "2026-11-27",
+      "url": "https://news.google.com/rss/articles/CBMihgFBVV95cUxNbHNLLUs2Q29kWmlnYW91akl6TjBsb3JwZzFZZ2pEa2xZUmliR2NPRDhMdFYydDQ0M0t6QWMxYnNGUzNySWJrUHVXcGRDb3c1c0NrMktsN2dKaldjRlMwZzBFNndNNFEwb3B4WE4teWlnR1NqWVFRT0Y1ZzFTTHBaMW1OLXZUQdIBiwFBVV95cUxQTWpJbXEwZHdIU0pTalpscnc3aWxRRjVBa1k3SC04dl9SdDBlQjRCSFJSZTBPZGtRT2RZN0dfak82ekxLY2E2S0IzRVdVYlVzVVN6R1NFYkZWelNuR0ZfdGRQTWZsUDNDbjd0VzJEdFBZZFF3Y2g5NTlZWVB2dXJkNzYwMVd4elFOQWxR?oc=5"
+    },
+    {
+      "title": "Export-banned Nvidia Blackwell B300 servers are openly for sale in China for up to $3.4 million — a 5x to 6x markup over U.S. prices",
+      "source": "Tom's Hardware",
+      "date_pt": "2026-11-26",
+      "url": "https://news.google.com/rss/articles/CBMipAJBVV95cUxQbHl1MzJuZDNCNG12eWYyVU81QUxweGRLQXB0VDNra2VpVHlJZ0h0LTJmWkZkSkZkX2hocTlIMTZKVHZqRlZPUFp3QVVTci1CTUVwQ1FFckMzUllUSW9lNVprUVZhTGZxRHhqX0R5TjRnblVyZXVHOFlDTEgzMXBjMHFfeEQ4WDlNR3BxZjBEcWVsNUJzaEI4TER4dE9VcXB3VUJKVDBPVkhSYU1sYUZ6emoxYU5SVW9EQzR0VkI4alVoVllyRW44SHVRNDhEVXVTb2c1ZmdncGJQdXpkd2NhOTI0b0htY2JwLUJCaFlKMW9mVGxyRlBVLWhSM1psSzlFMEprVEhYa0o4MnNFZjFubF95QzNvTERpTnZ3cktXSnJrVXA2?oc=5"
+    },
+    {
+      "title": "SpaceX Reportedly Slashes Some Nvidia Chip Rents — AI Researcher Sees Musk’s Edge In A GPU Glut",
+      "source": "Yahoo Finance",
+      "date_pt": "2026-11-25",
+      "url": "https://news.google.com/rss/articles/CBMiowFBVV95cUxQNmcyemkyaXdwU0IzejZ3dTVETTJJTXU4LXhQUXRZdzdQMG1oNFJOTVZKblB2RXdOekV0VzJwTFM4UTdYZVZXTFV5ZlJSWk5sR1FzV1RFRXlzZHlSTFZPams2V0RCYS1zazVhZFUyQ3M0TmJ0eGxTR25tQVZZSkNReEJkTXBvZXpoSWJaQjJGNkFsLUVuVk5kUGc4YmlsaEtJenpF?oc=5"
+    }
+  ]
+}

@@ -1,4 +1,4 @@
-/* ComputeNAV dashboard: renders docs/data/latest.json + history.json.
+/* ComputeNAV dashboard: renders docs/data/latest.json + history.json, and news.json.
  * No numbers are hard-coded here; everything comes from the JSON.
  * null / undefined / NaN are always shown as "—", never as 0. */
 (function () {
@@ -304,6 +304,26 @@
       (cc ? "<p><strong>Cross-check only; raw values not published:</strong></p><ul>" + cc + "</ul>" : "");
   }
 
+  function isHttpUrl(u) { return /^https?:\/\//i.test(String(u || "")); }
+
+  function renderNews(N) {
+    var el = $("news"), sec = $("news-section");
+    if (!el || !sec) return;
+    var items = (N && N.items) || [];
+    if (!items.length) { sec.hidden = true; return; }
+    el.innerHTML = items.map(function (it) {
+      var title = esc(it.title || DASH);
+      var src = esc(it.source || "");
+      var date = esc(it.date_pt || "");
+      var meta = [src, date ? date + " PT" : ""].filter(Boolean).join(" · ");
+      var headline = isHttpUrl(it.url)
+        ? "<a href='" + esc(it.url) + "' target='_blank' rel='noopener noreferrer'>" + title + "</a>"
+        : title;
+      return "<li>" + headline + (meta ? " <span class='news-meta'>" + meta + "</span>" : "") + "</li>";
+    }).join("");
+    sec.hidden = false;
+  }
+
   Promise.all([getJSON("data/latest.json"), getJSON("data/history.json")]).then(function (r) {
     var L = r[0], H = r[1];
     renderProps(L); renderMetrics(L, H); renderSubindices(L, H); renderBreakdown(L); renderSmallSampleNote(L); renderChart(H);
@@ -312,5 +332,10 @@
   }).catch(function (e) {
     var el = $("error"); el.hidden = false;
     el.textContent = "Failed to load data: " + e.message;
+  });
+
+  // News is optional: a missing or stale file must not block the dashboard.
+  getJSON("data/news.json").then(renderNews).catch(function () {
+    var sec = $("news-section"); if (sec) sec.hidden = true;
   });
 })();
