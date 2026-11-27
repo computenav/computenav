@@ -6,10 +6,10 @@
   var DASH = "\u2014";
   var TZ = "America/Los_Angeles";
   var MODEL_KEYS = ["H100_SXM", "H100_PCIe", "A100_80GB", "A100_40GB"];   // composite members
-  var SUB_KEYS = ["MI300X"];                                               // separate sub-indices, not in composite
+  var SUB_KEYS = ["MI300X", "SEA"];                                        // separate sub-indices, not in composite
   function subKeys(L) { return SUB_KEYS.filter(function (k) { return !!((L && L.models) || {})[k]; }); }
   var LEG_NAMES = { market: "market", income: "income", cost: "cost" };
-  var COLORS = { COMPOSITE: "#1d2330", H100_SXM: "#2f5bd3", H100_PCIe: "#0f9d8a", A100_80GB: "#d97706", A100_40GB: "#b42318", MI300X: "#7c3aed" };
+  var COLORS = { COMPOSITE: "#1d2330", H100_SXM: "#2f5bd3", H100_PCIe: "#0f9d8a", A100_80GB: "#d97706", A100_40GB: "#b42318", MI300X: "#7c3aed", SEA: "#0f766e" };
 
   function isNum(v) { return typeof v === "number" && isFinite(v); }
   function usd(v, d) {
@@ -93,70 +93,147 @@
     }).join("");
   }
 
-  function renderMetrics(L, H) {
-    var asof = L.asof_date_pt;
-    var c = L.composite || {};
+  function nvidiaCardHTML(k, m, H, asof, cls) {
+    if (!m) return "<div class='metric warn " + (cls || "") + "'><div class='v'>" + DASH + "</div><div class='l'>" + k + "</div><div class='d'>No data</div></div>";
+    var ins = m.insufficient_sample || {};
+    var legNames = [], small = [];
+    ["market", "income", "cost"].forEach(function (lg) {
+      var n = m[lg + "_n"];
+      if (isNum(n) && n > 0) legNames.push(LEG_NAMES[lg]);
+      if (ins[lg]) small.push(LEG_NAMES[lg] + " n=" + n);
+    });
+    var partial = legNames.length < 3;
+    var detail = partial ? ("Only " + (legNames.join(" + ") || DASH) + " (" + legNames.length + " of 3 methods); not directly comparable")
+                         : "Market / income / cost, equal-weight";
+    if (small.length) detail += "<br>Not published (n&lt;3): " + esc(small.join(", "));
+    var hidden = !!m.nav_hidden;
+    if (hidden && m.nav_hidden_reason) detail = esc(m.nav_hidden_reason) + "<br>" + detail;
+    var stale = isStale(m);
+    var dod = hidden ? "" : dodHTML(m.nav_indicative_usd, lastComparable(H, k, asof), isDodExcluded(m));
+    return "<div class='metric" + (cls ? " " + cls : "") + (partial || hidden || stale ? " warn" : "") + "'><div class='v'>" + (hidden ? hiddenHTML() : usd(m.nav_indicative_usd)) +
+      "</div><div class='l'>" + esc(m.label || k) + (stale ? "<br>" + staleBadge(m) : "") + "</div>" + dod + "<div class='d'>" + detail + "</div></div>";
+  }
+
+  function compositeCardHTML(c, H, asof, cls) {
     var cHidden = !!c.nav_hidden;
     var cStale = isStale(c);
     var cDod = cHidden ? "" : dodHTML(c.nav_indicative_usd, lastComparable(H, "COMPOSITE", asof), isDodExcluded(c));
-    var html = "<div class='metric primary" + (cHidden || cStale ? " warn" : "") + "'><div class='v'>" + (cHidden ? hiddenHTML() : usd(c.nav_indicative_usd)) +
+    var excluded = c.excluded_subindices || [];
+    var exclNote = "";
+    if (excluded.indexOf("MI300X") >= 0 || excluded.indexOf("SEA") >= 0) {
+      var parts = [];
+      if (excluded.indexOf("MI300X") >= 0) parts.push("AMD Instinct MI300X");
+      if (excluded.indexOf("SEA") >= 0) parts.push("the Southeast Asia GPU basket");
+      exclNote = " " + parts.join(" and ") + (parts.length > 1 ? " are separate sub-indices and are not included." : " is a separate sub-index and is not included.");
+    }
+    return "<div class='metric " + (cls || "primary") + (cHidden || cStale ? " warn" : "") + "'><div class='v'>" + (cHidden ? hiddenHTML() : usd(c.nav_indicative_usd)) +
       "</div><div class='l'>" + esc(c.label || "Composite") + (isStale(c) ? "<br>" + staleBadge(c) : "") + "</div>" + cDod + "<div class='d'>" +
       (cHidden && c.nav_hidden_reason ? esc(c.nav_hidden_reason) + "<br>" : "") +
       "Equal-weight mean of the four NVIDIA sub-indices (" + int(c.n_models) + " models with a value); installed-base weights to be calibrated." +
-      ((c.excluded_subindices || []).length ? " AMD Instinct MI300X is a separate sub-index and is not included." : "") + "</div></div>";
+      exclNote + "</div></div>";
+  }
+
+  function renderMetrics(L, H) {
+    var asof = L.asof_date_pt;
+    var c = L.composite || {};
+    var html = "";
+    // Hidden composite / model NAVs are shown next to MI300X and the SEA card, not here.
+    if (!c.nav_hidden) html += compositeCardHTML(c, H, asof, "primary");
     MODEL_KEYS.forEach(function (k) {
       var m = (L.models || {})[k];
-      if (!m) { html += "<div class='metric warn'><div class='v'>" + DASH + "</div><div class='l'>" + k + "</div><div class='d'>No data</div></div>"; return; }
-      var ins = m.insufficient_sample || {};
-      var legNames = [], small = [];
-      ["market", "income", "cost"].forEach(function (lg) {
-        var n = m[lg + "_n"];
-        if (isNum(n) && n > 0) legNames.push(LEG_NAMES[lg]);
-        if (ins[lg]) small.push(LEG_NAMES[lg] + " n=" + n);
-      });
-      var partial = legNames.length < 3;
-      var detail = partial ? ("Only " + (legNames.join(" + ") || DASH) + " (" + legNames.length + " of 3 methods); not directly comparable")
-                           : "Market / income / cost, equal-weight";
-      if (small.length) detail += "<br>Not published (n&lt;3): " + esc(small.join(", "));
-      var hidden = !!m.nav_hidden;
-      if (hidden && m.nav_hidden_reason) detail = esc(m.nav_hidden_reason) + "<br>" + detail;
-      var stale = isStale(m);
-      var dod = hidden ? "" : dodHTML(m.nav_indicative_usd, lastComparable(H, k, asof), isDodExcluded(m));
-      html += "<div class='metric" + (partial || hidden || stale ? " warn" : "") + "'><div class='v'>" + (hidden ? hiddenHTML() : usd(m.nav_indicative_usd)) +
-        "</div><div class='l'>" + esc(m.label) + (stale ? "<br>" + staleBadge(m) : "") + "</div>" + dod + "<div class='d'>" + detail + "</div></div>";
+      if (m && m.nav_hidden) return;
+      html += nvidiaCardHTML(k, m, H, asof, "");
     });
+    if (!html) html = "<p class='note'>All NVIDIA composite prints for today are in the section below (hidden under the small-sample rule).</p>";
     $("metrics").innerHTML = html;
   }
 
-  function renderSubindices(L, H) {
-    var keys = subKeys(L), el = $("subindices");
-    if (!el) return;
-    if (!keys.length) { el.parentNode.hidden = true; return; }
-    el.parentNode.hidden = false;
-    el.innerHTML = keys.map(function (k) {
-      var m = L.models[k], ins = m.insufficient_sample || {}, asof = L.asof_date_pt;
-      var hidden = !!m.nav_hidden, stale = isStale(m);
-      function legRow(lg, title, extra) {
-        var n = m[lg + "_n"], val;
-        if (!isNum(n) || n === 0) val = "<span class='skip'>" + (lg === "market" && m.market_note ? "Insufficient samples (n=0)" : "No data (n=0)") + "</span>";
-        else if (ins[lg]) val = smallHTML(n) + " <span class='en'>hidden</span>";
-        else val = "<strong>" + usd(m[lg + "_usd"]) + "</strong> <span class='en'>(n=" + int(n) + ")</span>";
-        return "<tr><th scope='row'>" + title + "</th><td>" + val + (extra ? "<br><span class='en'>" + extra + "</span>" : "") + "</td></tr>";
+  function mi300xCardHTML(m, H, asof) {
+    var ins = m.insufficient_sample || {};
+    var hidden = !!m.nav_hidden, stale = isStale(m);
+    function legRow(lg, title, extra) {
+      var n = m[lg + "_n"], val;
+      if (!isNum(n) || n === 0) val = "<span class='skip'>" + (lg === "market" && m.market_note ? "Insufficient samples (n=0)" : "No data (n=0)") + "</span>";
+      else if (ins[lg]) val = smallHTML(n) + " <span class='en'>hidden</span>";
+      else val = "<strong>" + usd(m[lg + "_usd"]) + "</strong> <span class='en'>(n=" + int(n) + ")</span>";
+      return "<tr><th scope='row'>" + title + "</th><td>" + val + (extra ? "<br><span class='en'>" + extra + "</span>" : "") + "</td></tr>";
+    }
+    var incExtra = "<span class='badge calib'>" + esc(m.income_note || "Parameters to be calibrated (placeholder assumptions)") + "</span>" +
+      (!ins.income && isNum(m.rental_median_usd_per_hour) ? " · rent median " + usd(m.rental_median_usd_per_hour, 2) + " /GPU-hr" : "");
+    var dod = hidden ? "" : dodHTML(m.nav_indicative_usd, lastComparable(H, "MI300X", asof), isDodExcluded(m));
+    return "<div class='metric sub" + (hidden || stale ? " warn" : "") + "'>" +
+      "<div class='l'>" + esc(m.label || "MI300X") + (stale ? "<br>" + staleBadge(m) : "") + "</div>" +
+      "<div class='v'>" + (hidden ? hiddenHTML() : usd(m.nav_indicative_usd)) + " <small>indicative NAV, USD per card</small></div>" + dod +
+      (hidden && m.nav_hidden_reason ? "<div class='d'>" + esc(m.nav_hidden_reason) + "</div>" : "") +
+      "<table class='legs'><tbody>" +
+      legRow("market", "Market approach", m.market_note ? esc(m.market_note) : "") +
+      legRow("income", "Income approach", incExtra) +
+      legRow("cost", "Cost approach", ins.cost ? "Not published: fewer than 3 observations" : "") +
+      "</tbody></table>" +
+      "<div class='d'>Separate sub-index: not part of the NVIDIA composite. Quality flags: " + esc(qualityText(m.quality_flag)) + "</div></div>";
+  }
+
+  function seaCardHTML(m, H, asof) {
+    var hidden = !!m.nav_hidden, stale = isStale(m);
+    var dod = hidden ? "" : dodHTML(m.nav_indicative_usd, lastComparable(H, "SEA", asof), isDodExcluded(m));
+    var countries = (m.sea_countries || []).join(", ") || "Singapore, Malaysia, Indonesia, Vietnam";
+    var counts = m.sea_official_observation_counts || {};
+    var memberOrder = m.sea_member_keys || ["H100_SXM", "H100_PCIe", "A100_80GB", "A100_40GB", "H200"];
+    var members = m.sea_members || {};
+    var rows = memberOrder.map(function (k) {
+      var s = members[k] || {};
+      var ins = s.insufficient_sample || {};
+      var bits = [];
+      ["market", "income", "cost"].forEach(function (lg) {
+        var n = s[lg + "_n"];
+        if (isNum(n) && n > 0) bits.push(LEG_NAMES[lg] + " n=" + int(n) + (ins[lg] ? " hidden" : ""));
+      });
+      var val;
+      if (s.nav_hidden) {
+        var nInc = isNum(s.income_n) ? s.income_n : 0;
+        val = (nInc > 0 && nInc < 3 ? smallHTML(nInc) : "<span class='skip'>Hidden</span>");
+      } else if (!isNum(s.nav_indicative_usd)) {
+        val = "<span class='skip'>No data (n=0)</span>";
+      } else {
+        val = "<strong>" + usd(s.nav_indicative_usd) + "</strong>";
       }
-      var incExtra = "<span class='badge calib'>" + esc(m.income_note || "Parameters to be calibrated (placeholder assumptions)") + "</span>" +
-        (!ins.income && isNum(m.rental_median_usd_per_hour) ? " · rent median " + usd(m.rental_median_usd_per_hour, 2) + " /GPU-hr" : "");
-      var dod = hidden ? "" : dodHTML(m.nav_indicative_usd, lastComparable(H, k, asof), isDodExcluded(m));
-      return "<div class='metric sub" + (hidden || stale ? " warn" : "") + "'>" +
-        "<div class='l'>" + esc(m.label || k) + (stale ? "<br>" + staleBadge(m) : "") + "</div>" +
-        "<div class='v'>" + (hidden ? hiddenHTML() : usd(m.nav_indicative_usd)) + " <small>indicative NAV, USD per card</small></div>" + dod +
-        (hidden && m.nav_hidden_reason ? "<div class='d'>" + esc(m.nav_hidden_reason) + "</div>" : "") +
-        "<table class='legs'><tbody>" +
-        legRow("market", "Market approach", m.market_note ? esc(m.market_note) : "") +
-        legRow("income", "Income approach", incExtra) +
-        legRow("cost", "Cost approach", ins.cost ? "Not published: fewer than 3 observations" : "") +
-        "</tbody></table>" +
-        "<div class='d'>Separate sub-index: not part of the NVIDIA composite. Quality flags: " + esc(qualityText(m.quality_flag)) + "</div></div>";
+      var regions = (s.regions || []).join(", ") || DASH;
+      return "<tr><th scope='row'>" + esc(s.label || k) + "</th><td>" + val +
+        "<br><span class='en'>" + esc(bits.join(", ") || "no official observations") + " · regions " + esc(regions) + "</span></td></tr>";
     }).join("");
+    return "<div class='metric sub sea" + (hidden || stale ? " warn" : "") + "'>" +
+      "<div class='l'>" + esc(m.label || "Southeast Asia GPU") + (stale ? "<br>" + staleBadge(m) : "") + "</div>" +
+      "<div class='v'>" + (hidden ? hiddenHTML() : usd(m.nav_indicative_usd)) + " <small>indicative NAV, USD per card</small></div>" + dod +
+      (hidden && m.nav_hidden_reason ? "<div class='d'>" + esc(m.nav_hidden_reason) + "</div>" : "") +
+      "<div class='d'>Equal-weight mean of regional model NAVs from local-cloud official lists in " + esc(countries) +
+      ". China is not included. Official observations today: income n=" + int(counts.income) +
+      ", market n=" + int(counts.market) + ", cost n=" + int(counts.cost) + ".</div>" +
+      "<table class='legs'><tbody>" + rows + "</tbody></table>" +
+      "<div class='d'>Separate sub-index: not part of the NVIDIA composite. " +
+      "<span class='badge calib'>" + esc(m.income_note || "Parameters to be calibrated (placeholder assumptions)") + "</span><br>Quality flags: " +
+      esc(qualityText(m.quality_flag)) + "</div></div>";
+  }
+
+  function renderSubindices(L, H) {
+    var el = $("subindices");
+    if (!el) return;
+    var asof = L.asof_date_pt, c = L.composite || {}, html = "";
+    var keys = subKeys(L);
+    keys.forEach(function (k) {
+      var m = (L.models || {})[k];
+      if (!m) return;
+      if (k === "SEA") html += seaCardHTML(m, H, asof);
+      else html += mi300xCardHTML(m, H, asof);
+    });
+    // NVIDIA prints currently hidden by the n<3 rule sit in this same row.
+    if (c.nav_hidden) html += compositeCardHTML(c, H, asof, "hidden-print");
+    MODEL_KEYS.forEach(function (k) {
+      var m = (L.models || {})[k];
+      if (m && m.nav_hidden) html += nvidiaCardHTML(k, m, H, asof, "hidden-print");
+    });
+    if (!html) { el.parentNode.hidden = true; return; }
+    el.parentNode.hidden = false;
+    el.innerHTML = html;
   }
 
   function qualityText(q) {
@@ -171,6 +248,15 @@
       "carried_forward": "stale / carried forward",
       "equal_weight_of_four_nvidia_models": "equal weight of the four NVIDIA models",
       "mi300x_excluded_from_composite": "MI300X excluded from the composite (separate sub-index)",
+      "sea_excluded_from_composite": "SEA basket excluded from the composite (separate sub-index)",
+      "not_in_nvidia_composite": "not in the NVIDIA composite",
+      "not_mixed_with_mi300x": "not mixed with the MI300X sub-index",
+      "official_P=R=1": "official SEA valuation uses P=R=1",
+      "sea_regional_basket=SG_MY_ID_VN": "regional basket: Singapore, Malaysia, Indonesia, Vietnam",
+      "equal_weight_of_sea_model_navs": "equal weight of SEA model NAVs",
+      "h200_included_in_sea_basket_only": "H200 is in the SEA basket only, not in the NVIDIA composite",
+      "china_excluded": "China is not included",
+      "thailand_excluded": "Thailand is not included",
       "installed_base_weights=to-be-calibrated": "installed-base weights to be calibrated",
       "stale": "stale / carried forward"
     };
@@ -180,8 +266,7 @@
   function renderBreakdown(L) {
     var head = ["Model", "Indicative NAV", "Market", "n", "Income", "Rent median /GPU-hr", "n", "Cost", "New-card anchor", "n", "Quality flags"];
     var num = [false, true, true, true, true, true, true, true, true, true, false];
-    var rows = MODEL_KEYS.concat(subKeys(L)).map(function (k) {
-      var m = (L.models || {})[k] || {};
+    function modelRow(k, m, labelPrefix) {
       var ins = m.insufficient_sample || {};
       var sub = SUB_KEYS.indexOf(k) >= 0;
       function leg(name, v, d) {
@@ -190,10 +275,21 @@
         return usd(v, d) + (sub && name === "income" && isNum(v) && d == null ? " <span class='badge calib'>parameters to be calibrated</span>" : "");
       }
       var navCell = (m.nav_hidden ? "<span class='skip'>Hidden</span>" : usd(m.nav_indicative_usd)) + staleBadge(m);
-      return [esc(m.label || k), navCell,
+      return [esc((labelPrefix || "") + (m.label || k)), navCell,
         leg("market", m.market_usd), int(m.market_n), leg("income", m.income_usd),
         leg("income", m.rental_median_usd_per_hour, 4), int(m.income_n),
         leg("cost", m.cost_usd), leg("cost", m.new_card_usd), int(m.cost_n), esc(qualityText(m.quality_flag))];
+    }
+    var rows = [];
+    MODEL_KEYS.concat(subKeys(L)).forEach(function (k) {
+      var m = (L.models || {})[k] || {};
+      rows.push(modelRow(k, m, ""));
+      if (k === "SEA") {
+        var members = m.sea_members || {};
+        (m.sea_member_keys || Object.keys(members)).forEach(function (mk) {
+          if (members[mk]) rows.push(modelRow(mk, members[mk], "SEA · "));
+        });
+      }
     });
     $("breakdown").innerHTML = "<thead><tr>" + head.map(function (h, i) { return "<th" + (num[i] ? " class='num'" : "") + ">" + h + "</th>"; }).join("") +
       "</tr></thead><tbody>" + rows.map(function (r) {

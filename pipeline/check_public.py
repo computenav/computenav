@@ -104,6 +104,18 @@ def hidden_values(priv: dict, pub: dict) -> list[tuple[str, float]]:
                         out.append((f"{k}.{f}", float(m[f])))
         if pm.get("nav_hidden") and _num(m.get("nav_indicative_usd")):
             out.append((f"{k}.nav_indicative_usd", float(m["nav_indicative_usd"])))
+        # SEA basket members (private navs live under models.SEA.sea_members).
+        pmem, vmem = pm.get("sea_members") or {}, m.get("sea_members") or {}
+        for mk, ps in pmem.items():
+            vs = vmem.get(mk) or {}
+            ins = (ps or {}).get("insufficient_sample") or {}
+            for leg in LEGS:
+                if ins.get(leg):
+                    for f in (f"{leg}_usd",) + DERIVED.get(leg, ()):
+                        if _num(vs.get(f)):
+                            out.append((f"{k}.{mk}.{f}", float(vs[f])))
+            if (ps or {}).get("nav_hidden") and _num(vs.get("nav_indicative_usd")):
+                out.append((f"{k}.{mk}.nav_indicative_usd", float(vs["nav_indicative_usd"])))
     pc, c = pub.get("composite") or {}, priv.get("composite") or {}
     if pc.get("nav_hidden") and _num(c.get("nav_indicative_usd")):
         out.append(("composite.nav_indicative_usd", float(c["nav_indicative_usd"])))
@@ -138,6 +150,11 @@ def leak_problems(priv: dict, root: Path = ROOT) -> list[str]:
                  for f in fields if _num(m.get(f))}
     if _num((pub.get("composite") or {}).get("nav_indicative_usd")):
         published.add(float(pub["composite"]["nav_indicative_usd"]))
+    for m in (pub.get("models") or {}).values():
+        for sm in ((m or {}).get("sea_members") or {}).values():
+            for f in fields:
+                if _num((sm or {}).get(f)):
+                    published.add(float(sm[f]))
     probs = []
     for name, hv in hidden:
         if any(abs(hv - pv) < 0.005 for pv in published):
@@ -149,6 +166,17 @@ def leak_problems(priv: dict, root: Path = ROOT) -> list[str]:
             text = p.read_text(encoding="utf-8")
             if p.suffix == ".json":
                 for path, v in _numbers(json.loads(text)):
+                    # Sample counts, HTTP status and placeholder parameters are not prices.
+                    # A hidden rent median of 4.005 would otherwise "match" income_n=4
+                    # because abs(4 - 4.005) < 0.005 in IEEE float.
+                    leaf = path.rsplit(".", 1)[-1]
+                    if leaf in {
+                        "market_n", "income_n", "cost_n", "n_models", "observation_count",
+                        "official_observation_count", "sold_count_today", "schema_version",
+                        "legs_present", "legs_used", "http_status", "min_n",
+                        "remaining_life_years", "book_life_years", "hours_per_year",
+                    } or leaf.endswith("_n") or leaf.endswith("_count") or leaf.endswith("_years"):
+                        continue
                     if abs(v - hv) < 0.005:
                         probs.append(f"{rel}{path}: hidden value {name} published")
             for s in _variants(hv):

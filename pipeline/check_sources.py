@@ -37,8 +37,22 @@ def upstream_coverage() -> tuple[list[str], list[str]]:
     return [], warnings
 
 
+def _all_plans():
+    plans = list(run_daily.SOURCE_PLAN)
+    sea = getattr(run_daily, "sea_index", None)
+    if sea is None:
+        try:
+            import sea_index as sea
+        except ImportError:
+            sea = None
+    if sea is not None:
+        plans.extend(getattr(sea, "SEA_SOURCE_PLAN", []) or [])
+    return plans
+
+
 def main():
-    probs = check(run_daily.SOURCE_PLAN)
+    plan = _all_plans()
+    probs = check(plan)
     errs, warns = upstream_coverage()
     for w in warns:
         print("DENYLIST WARNING:", w)
@@ -46,7 +60,7 @@ def main():
         print("DENYLIST CHECK FAILED:", p)
     if probs or errs:
         return 1
-    print(f"denylist check OK: {len(run_daily.SOURCE_PLAN)} sources, none from Silicon Data / Ornn / SemiAnalysis / Compute Exchange")
+    print(f"denylist check OK: {len(plan)} sources, none from Silicon Data / Ornn / SemiAnalysis / Compute Exchange")
     return 0
 
 

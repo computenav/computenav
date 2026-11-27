@@ -16,6 +16,7 @@ ComputeNAV is a daily research index of the **indicative realizable net asset va
 | A100 40GB | 40GB |
 | Composite | Equal-weight mean of the four NVIDIA sub-indices above (installed-base weights to be calibrated) |
 | AMD Instinct MI300X | **Separate sub-index, not in the composite** (OAM, 192 GB; methodology Section 16). Same three methods and small-sample rule; income-approach parameters are placeholders to be calibrated |
+| Southeast Asia GPU | **Separate sub-index, not in the composite** (methodology Section 17). Equal-weight basket of regional H100 SXM / H100 PCIe / A100 80GB / A100 40GB / H200 NAVs from local-cloud official lists in **Singapore, Malaysia, Indonesia and Vietnam** only (China and Thailand are not included). Same small-sample rule; income-approach parameters are placeholders to be calibrated |
 
 Each model's indicative NAV is the equal-weight mean of the three approaches available that day:
 

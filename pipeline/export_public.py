@@ -60,13 +60,18 @@ MODEL_KEYS = ["H100_SXM", "H100_PCIe", "A100_80GB", "A100_40GB"]
 # Separate sub-indices: same three methods and the same small-sample masking,
 # but NOT members of the composite. Each is masked on its own (it shares no
 # equation with the composite or with any other model).
-SUBINDEX_KEYS = ["MI300X"]
+SUBINDEX_KEYS = ["MI300X", "SEA"]
+# SEA is a regional basket (equal-weight of per-model SEA NAVs). It is masked
+# with its own member equations, not as a single-SKU 3-leg model.
+BASKET_SUBINDEX_KEYS = ["SEA"]
+SEA_MEMBER_KEYS = ["H100_SXM", "H100_PCIe", "A100_80GB", "A100_40GB", "H200"]
 ALL_MODEL_KEYS = MODEL_KEYS + SUBINDEX_KEYS
 SERIES_KEYS = ALL_MODEL_KEYS + ["COMPOSITE"]
 LABELS_EN = {
     "H100_SXM": "H100 SXM", "H100_PCIe": "H100 PCIe",
     "A100_80GB": "A100 80GB", "A100_40GB": "A100 40GB",
     "MI300X": "AMD Instinct MI300X (separate sub-index, not in composite)",
+    "SEA": "Southeast Asia GPU (Singapore, Malaysia, Indonesia, Vietnam) — separate sub-index, not in composite",
     "COMPOSITE": "Composite (equal-weight of the four NVIDIA models, to be calibrated)",
 }
 
@@ -265,6 +270,66 @@ NAV_HIDDEN_REASON = ("Hidden: together with other published values it would reve
                      "The formula is unchanged; the NAV is still computed upstream from all methods.")
 COMPOSITE_HIDDEN_REASON = ("Hidden: the composite is the equal-weight mean of the model NAVs; publishing it would "
                            "reveal a hidden model NAV and therefore a method value with n<3.")
+SEA_BASKET_HIDDEN_REASON = ("Hidden: the SEA basket is the equal-weight mean of the regional model NAVs; "
+                            "publishing it would reveal a hidden model NAV and therefore a method value with n<3.")
+
+
+def plan_sea_basket(members: dict) -> dict:
+    """members: {model_key: {market_n, income_n, cost_n}} for SEA_MEMBER_KEYS."""
+    ns = {k: {leg: (members.get(k) or {}).get(f"{leg}_n") for leg in LEGS} for k in SEA_MEMBER_KEYS}
+    return plan_masking(ns, keys=list(SEA_MEMBER_KEYS), with_composite=True)
+
+
+def mask_sea_model(m: dict) -> dict:
+    """Apply the small-sample rule to the SEA regional basket and its members."""
+    members = dict(m.get("sea_members") or {})
+    plan = plan_sea_basket(members)
+    pub_members = {}
+    for k in SEA_MEMBER_KEYS:
+        src = members.get(k) or {"model_key": k, "market_n": 0, "income_n": 0, "cost_n": 0}
+        tmp = {
+            "market_usd": src.get("market_usd"), "income_usd": src.get("income_usd"),
+            "cost_usd": src.get("cost_usd"), "market_n": src.get("market_n") or 0,
+            "income_n": src.get("income_n") or 0, "cost_n": src.get("cost_n") or 0,
+            "nav_indicative_usd": src.get("nav_indicative_usd"),
+            "rental_median_usd_per_hour": src.get("rental_median_usd_per_hour"),
+            "new_card_usd": src.get("new_card_usd"),
+        }
+        mask_model(tmp, plan["nav"][k])
+        pub_members[k] = {
+            "model_key": k,
+            "label": src.get("label") or LABELS_EN.get(k, k.replace("_", " ")),
+            "regions": list(src.get("regions") or []),
+            "sources": list(src.get("sources") or []),
+            "market_usd": tmp["market_usd"], "income_usd": tmp["income_usd"], "cost_usd": tmp["cost_usd"],
+            "nav_indicative_usd": tmp["nav_indicative_usd"],
+            "market_n": tmp["market_n"], "income_n": tmp["income_n"], "cost_n": tmp["cost_n"],
+            "rental_median_usd_per_hour": tmp["rental_median_usd_per_hour"],
+            "new_card_usd": tmp["new_card_usd"],
+            "insufficient_sample": tmp["insufficient_sample"],
+            "nav_hidden": tmp["nav_hidden"],
+            "nav_hidden_reason": tmp["nav_hidden_reason"] if tmp["nav_hidden"] else None,
+        }
+    m["market_usd"] = m["income_usd"] = m["cost_usd"] = None
+    m["rental_median_usd_per_hour"] = m["new_card_usd"] = None
+    m["insufficient_sample"] = {"market": False, "income": False, "cost": False}
+    if plan["composite"] == "hidden":
+        m["nav_indicative_usd"] = None
+        m["nav_hidden"] = True
+        m["nav_hidden_reason"] = SEA_BASKET_HIDDEN_REASON
+    elif plan["composite"] == "absent":
+        m["nav_indicative_usd"] = None
+        m["nav_hidden"] = False
+        m["nav_hidden_reason"] = None
+    else:
+        m["nav_hidden"] = False
+        m["nav_hidden_reason"] = None
+    m["sea_members"] = pub_members
+    m["market_note"] = ("Regional basket: market, income and cost are computed per model across "
+                        "Singapore, Malaysia, Indonesia and Vietnam, then equal-weighted. "
+                        "Member values with n<3 are not published.")
+    m["income_note"] = "Parameters to be calibrated (placeholder assumptions)"
+    return m
 
 
 def mask_model(m: dict, nav_status: str) -> dict:
@@ -314,9 +379,29 @@ def assert_small_sample(latest_pub: dict, hist: dict) -> None:
         if comp_val is not None and plan["composite"] != "published":
             raise SystemExit(f"GUARD: {where} composite would reveal a leg with n<{MIN_SAMPLE_N}")
 
+    def check_sea(where, p):
+        if p is None:
+            return
+        for leg in LEGS:
+            if p.get(f"{leg}_usd") is not None:
+                raise SystemExit(f"GUARD: {where}.SEA.{leg}_usd must stay null (legs live on members)")
+        members = p.get("sea_members") or {}
+        for k in SEA_MEMBER_KEYS:
+            if k in members:
+                check_point(f"{where}.SEA.{k}", members[k])
+        plan = plan_sea_basket(members)
+        for k, src in members.items():
+            if src.get("nav_indicative_usd") is not None and plan["nav"].get(k) != "published":
+                raise SystemExit(f"GUARD: {where}.SEA.{k} NAV would reveal a leg with n<{MIN_SAMPLE_N}")
+        if p.get("nav_indicative_usd") is not None and plan["composite"] != "published":
+            raise SystemExit(f"GUARD: {where}.SEA basket NAV would reveal a hidden member with n<{MIN_SAMPLE_N}")
+
     def check_sub(where, k, p):
         # Separate sub-index: its NAV equation stands alone (not in the composite).
         if p is None:
+            return
+        if k in BASKET_SUBINDEX_KEYS:
+            check_sea(where, p)
             return
         check_point(f"{where}.{k}", p)
         plan = plan_masking({k: {leg: p.get(f"{leg}_n") for leg in LEGS}}, keys=[k], with_composite=False)
@@ -437,6 +522,12 @@ def build_latest(priv: dict, allow_observation_only: bool = False) -> dict:
             "in_composite": key in MODEL_KEYS,
             "separate_subindex": key in SUBINDEX_KEYS,
         }
+        if key == "SEA":
+            for fld in ("sea_countries", "sea_country_codes", "sea_member_keys",
+                        "sea_official_observation_counts", "sea_regions_with_official_quotes",
+                        "sea_source_ids", "sea_members"):
+                if fld in m:
+                    models[key][fld] = m[fld]
         models[key].update(extract_guard_fields(m, composite=False))
     ns = {k: {leg: (models[k] or {}).get(f"{leg}_n") for leg in LEGS} for k in MODEL_KEYS}
     plan = plan_masking(ns)
@@ -445,6 +536,9 @@ def build_latest(priv: dict, allow_observation_only: bool = False) -> dict:
             mask_model(models[k], plan["nav"][k])
     for k in SUBINDEX_KEYS:
         if models.get(k) is not None:
+            if k in BASKET_SUBINDEX_KEYS:
+                mask_sea_model(models[k])
+                continue
             sub = plan_masking({k: {leg: models[k].get(f"{leg}_n") for leg in LEGS}}, keys=[k], with_composite=False)
             mask_model(models[k], sub["nav"][k])
             if not _present(models[k].get("market_n")):
@@ -494,7 +588,7 @@ def build_latest(priv: dict, allow_observation_only: bool = False) -> dict:
             "nav_hidden_reason": COMPOSITE_HIDDEN_REASON if comp_hidden else None,
             "n_models": comp_bd.get("n_models"),
             "members": [k for k in (comp_bd.get("composite_members") or MODEL_KEYS) if k in MODEL_KEYS],
-            "excluded_subindices": [k for k in (comp_bd.get("excluded_subindices") or []) if k in SUBINDEX_KEYS],
+            "excluded_subindices": [k for k in (comp_bd.get("excluded_subindices") or SUBINDEX_KEYS) if k in SUBINDEX_KEYS],
             "quality_flag": comp.get("quality_flag"),
             **extract_guard_fields(comp, composite=True),
         },
@@ -534,6 +628,10 @@ def _history_point(key: str, latest_pub: dict) -> dict:
               "market_n": src.get("market_n"), "income_n": src.get("income_n"), "cost_n": src.get("cost_n"),
               "insufficient_sample": src.get("insufficient_sample"),
               "nav_hidden": bool(src.get("nav_hidden"))}
+        if key == "SEA":
+            pt["sea_members"] = src.get("sea_members")
+            pt["sea_country_codes"] = src.get("sea_country_codes")
+            pt["sea_official_observation_counts"] = src.get("sea_official_observation_counts")
     pt.update(extract_guard_fields(src, composite=(key == "COMPOSITE")))
     return pt
 

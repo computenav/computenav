@@ -259,7 +259,7 @@
         },
         {
           "asof_date_pt": "2026-11-27",
-          "computed_at_pt": "2026-11-27T06:56:07.729542-08:00",
+          "computed_at_pt": "2026-11-27T09:31:07.729903-08:00",
           "nav_indicative_usd": 20044.29,
           "market_usd": null,
           "income_usd": 41123.05,
@@ -540,7 +540,7 @@
         },
         {
           "asof_date_pt": "2026-11-27",
-          "computed_at_pt": "2026-11-27T06:56:07.729542-08:00",
+          "computed_at_pt": "2026-11-27T09:31:07.729903-08:00",
           "nav_indicative_usd": 16886.69,
           "market_usd": null,
           "income_usd": 26032.52,
@@ -821,7 +821,7 @@
         },
         {
           "asof_date_pt": "2026-11-27",
-          "computed_at_pt": "2026-11-27T06:56:07.729542-08:00",
+          "computed_at_pt": "2026-11-27T09:31:07.729903-08:00",
           "nav_indicative_usd": null,
           "market_usd": 7277.19,
           "income_usd": 14786.47,
@@ -1102,7 +1102,7 @@
         },
         {
           "asof_date_pt": "2026-11-27",
-          "computed_at_pt": "2026-11-27T06:56:07.729542-08:00",
+          "computed_at_pt": "2026-11-27T09:31:07.729903-08:00",
           "nav_indicative_usd": 20721.89,
           "market_usd": null,
           "income_usd": 20721.89,
@@ -1262,7 +1262,7 @@
         },
         {
           "asof_date_pt": "2026-11-27",
-          "computed_at_pt": "2026-11-27T06:56:07.729542-08:00",
+          "computed_at_pt": "2026-11-27T09:31:07.729903-08:00",
           "nav_indicative_usd": null,
           "nav_hidden": true,
           "carried_forward": false,
@@ -1325,7 +1325,7 @@
         },
         {
           "asof_date_pt": "2026-11-27",
-          "computed_at_pt": "2026-11-27T06:56:07.729542-08:00",
+          "computed_at_pt": "2026-11-27T09:31:07.729903-08:00",
           "nav_indicative_usd": null,
           "market_usd": null,
           "income_usd": 31134.89,
@@ -1347,6 +1347,182 @@
           "legs_present": 2
         }
       ]
+    },
+    "SEA": {
+      "label": "Southeast Asia GPU (Singapore, Malaysia, Indonesia, Vietnam) — separate sub-index, not in composite",
+      "points": [
+        {
+          "asof_date_pt": "2026-11-27",
+          "computed_at_pt": "2026-11-27T09:31:07.729903-08:00",
+          "nav_indicative_usd": 35563.74,
+          "market_usd": null,
+          "income_usd": null,
+          "cost_usd": null,
+          "market_n": 0,
+          "income_n": 0,
+          "cost_n": 0,
+          "insufficient_sample": {
+            "market": false,
+            "income": false,
+            "cost": false
+          },
+          "nav_hidden": false,
+          "sea_members": {
+            "H100_SXM": {
+              "model_key": "H100_SXM",
+              "label": "H100 SXM",
+              "regions": [
+                "SG",
+                "VN"
+              ],
+              "sources": [
+                "acc_sg",
+                "fpt_vn"
+              ],
+              "market_usd": null,
+              "income_usd": null,
+              "cost_usd": null,
+              "nav_indicative_usd": null,
+              "market_n": 0,
+              "income_n": 2,
+              "cost_n": 0,
+              "rental_median_usd_per_hour": null,
+              "new_card_usd": null,
+              "insufficient_sample": {
+                "market": false,
+                "income": true,
+                "cost": false
+              },
+              "nav_hidden": true,
+              "nav_hidden_reason": "Hidden: together with other published values it would reveal a method value with n<3. The formula is unchanged; the NAV is still computed upstream from all methods."
+            },
+            "H100_PCIe": {
+              "model_key": "H100_PCIe",
+              "label": "H100 PCIe",
+              "regions": [
+                "SG"
+              ],
+              "sources": [
+                "acc_sg"
+              ],
+              "market_usd": null,
+              "income_usd": null,
+              "cost_usd": null,
+              "nav_indicative_usd": null,
+              "market_n": 0,
+              "income_n": 1,
+              "cost_n": 0,
+              "rental_median_usd_per_hour": null,
+              "new_card_usd": null,
+              "insufficient_sample": {
+                "market": false,
+                "income": true,
+                "cost": false
+              },
+              "nav_hidden": true,
+              "nav_hidden_reason": "Hidden: together with other published values it would reveal a method value with n<3. The formula is unchanged; the NAV is still computed upstream from all methods."
+            },
+            "A100_80GB": {
+              "model_key": "A100_80GB",
+              "label": "A100 80GB",
+              "regions": [
+                "SG"
+              ],
+              "sources": [
+                "acc_sg"
+              ],
+              "market_usd": null,
+              "income_usd": null,
+              "cost_usd": null,
+              "nav_indicative_usd": null,
+              "market_n": 0,
+              "income_n": 2,
+              "cost_n": 0,
+              "rental_median_usd_per_hour": null,
+              "new_card_usd": null,
+              "insufficient_sample": {
+                "market": false,
+                "income": true,
+                "cost": false
+              },
+              "nav_hidden": true,
+              "nav_hidden_reason": "Hidden: together with other published values it would reveal a method value with n<3. The formula is unchanged; the NAV is still computed upstream from all methods."
+            },
+            "A100_40GB": {
+              "model_key": "A100_40GB",
+              "label": "A100 40GB",
+              "regions": [
+                "SG"
+              ],
+              "sources": [
+                "acc_sg"
+              ],
+              "market_usd": null,
+              "income_usd": null,
+              "cost_usd": null,
+              "nav_indicative_usd": null,
+              "market_n": 0,
+              "income_n": 2,
+              "cost_n": 0,
+              "rental_median_usd_per_hour": null,
+              "new_card_usd": null,
+              "insufficient_sample": {
+                "market": false,
+                "income": true,
+                "cost": false
+              },
+              "nav_hidden": true,
+              "nav_hidden_reason": "Hidden: together with other published values it would reveal a method value with n<3. The formula is unchanged; the NAV is still computed upstream from all methods."
+            },
+            "H200": {
+              "model_key": "H200",
+              "label": "H200",
+              "regions": [
+                "MY",
+                "ID"
+              ],
+              "sources": [
+                "novagpu_my",
+                "teamcloud_my",
+                "biznet_neo"
+              ],
+              "market_usd": null,
+              "income_usd": 51769.22,
+              "cost_usd": null,
+              "nav_indicative_usd": 51769.22,
+              "market_n": 0,
+              "income_n": 3,
+              "cost_n": 0,
+              "rental_median_usd_per_hour": 4.9716,
+              "new_card_usd": null,
+              "insufficient_sample": {
+                "market": false,
+                "income": false,
+                "cost": false
+              },
+              "nav_hidden": false,
+              "nav_hidden_reason": null
+            }
+          },
+          "sea_country_codes": [
+            "SG",
+            "MY",
+            "ID",
+            "VN"
+          ],
+          "sea_official_observation_counts": {
+            "market": 0,
+            "income": 10,
+            "cost": 0
+          },
+          "carried_forward": false,
+          "stale": false,
+          "dod_excluded": false,
+          "carry_reason": null,
+          "carried_from_asof": null,
+          "legs_present": 5
+        }
+      ]
     }
   },
   "dates": [
@@ -1363,5 +1539,5 @@
     "2026-11-26",
     "2026-11-27"
   ],
-  "generated_at_pt": "2026-11-27T06:56:07.729542-08:00"
+  "generated_at_pt": "2026-11-27T09:31:07.729903-08:00"
 }

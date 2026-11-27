@@ -42,8 +42,10 @@ td.num .skip{white-space:normal;display:inline-block;max-width:9em;text-align:ri
 .metric .l .badge.stale{margin-left:0;margin-top:6px;display:inline-block}
 .dod{font-size:13px;font-weight:600;margin:4px 0 2px;color:var(--muted);font-variant-numeric:tabular-nums}
 .dod.skipped{font-weight:600;color:var(--warn)}
-.metrics.subs{grid-template-columns:repeat(auto-fit,minmax(320px,560px))}
+.metrics.subs{grid-template-columns:repeat(auto-fit,minmax(280px,1fr))}
 .metric.sub{border-color:#7c3aed}
+.metric.sub.sea{border-color:#0f766e}
+.metric.hidden-print{border-style:dashed}
 .metric .v small{font-size:13px;font-weight:400;color:var(--muted)}
 table.legs{width:100%;border-collapse:collapse;margin:8px 0;font-size:14px}
 table.legs th{text-align:left;font-weight:600;padding:4px 8px 4px 0;vertical-align:top;white-space:nowrap}

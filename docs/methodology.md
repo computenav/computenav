@@ -295,7 +295,7 @@ Rules are **to-be-calibrated**. The v0 intent (not yet frozen) is as follows and
 
 \(\mathcal{B}_0\) is the set of buckets included in the v0 composite: **only** NVIDIA H100 SXM, H100 PCIe, A100 80GB and A100 40GB (installed-base weights are still **to-be-calibrated**; the current code publishes the equal-weight mean of these four). \( s_{b,t} \) is the in-service installed base or a publicly available proxy weight; source and update frequency **to-be-calibrated**. Until the weights are ready, the composite level is calculated with equal-weight placeholders and labelled to-be-calibrated.
 
-**AMD Instinct MI300X is a separate sub-index and is not in \(\mathcal{B}_0\).** It uses the same three approaches and publication guards as the NVIDIA sub-indices but does not enter the composite, so the NVIDIA composite history stays continuous. In the code this corresponds to `COMPOSITE_KEYS` / `composite_members`, kept apart from `OFFICIAL_INDEX_KEYS` (which includes MI300X).
+**AMD Instinct MI300X and the Southeast Asia GPU basket are separate sub-indices and are not in \(\mathcal{B}_0\).** They use the same three approaches and publication guards as the NVIDIA sub-indices but do not enter the composite, so the NVIDIA composite history stays continuous. In the code this corresponds to `COMPOSITE_KEYS` / `composite_members`, kept apart from `OFFICIAL_INDEX_KEYS` (which includes MI300X) and the SEA basket key.
 
 ### 8.2 Residual value curve
 
@@ -465,4 +465,28 @@ AMD Instinct MI300X was added to v0. The implementation choice is: **publish a s
 
 ---
 
+
+## 17. v0 addendum: separate Southeast Asia GPU basket (2026-11-27 PT)
+
+A **separate Southeast Asia GPU sub-index** was added to the public dashboard. It is **not** a member of the NVIDIA composite and is **not** mixed with the MI300X sub-index, so those histories stay continuous. The public dashboard keeps the statement "high-school student research project, indicative data, not investment advice".
+
+### 17.1 Coverage
+
+- **Geography:** Singapore, Malaysia, Indonesia and Vietnam only. China is not included. Thailand was reviewed in an internal trial and is not in this public basket.
+- **Basket:** equal-weight mean of regional model NAVs for H100 SXM, H100 PCIe, A100 80GB, A100 40GB, and H200 (H200 NVL / SXM / generic form are pooled; form is taken only from the source and is not invented). H200 is in this basket only; it is not added to the NVIDIA composite.
+- **Approaches and guards:** the same three approaches as v0, applied to official 1-GPU full-card observations from local-cloud public lists in those four countries, then pooled across the countries for each model. Official SEA valuation uses identity factors \(P = R = 1\). The small-sample rule (\(n < 3\)) applies to each model-method, and the basket NAV is hidden when publishing it would let a hidden member NAV (and therefore a method value with \(n < 3\)) be backed out. Income- and cost-approach parameters remain the v0 placeholders, to be calibrated.
+- **What may enter an official SEA leg:** local-cloud on-demand or official list rates for a 1-GPU full card. A vendor that publishes the same 1-GPU hourly rate on two pages or product lines is counted once.
+- **What does not enter:** minimum-term or reserved tenors; monthly packages or hourly rates backsolved from a monthly string; "starting at" / "from" list prices; MIG or other partial-GPU slices; consumer GeForce / RTX rows; US-headquartered cloud APAC list prices (a separate comparison line, not mixed into local-cloud SEA income); wholesale FOB quotes from a mixed hub that cannot be attributed to one of the four countries; unlicensed consumer marketplaces (Carousell, Shopee, Tokopedia, Chotot and the like), consistent with the eBay treatment in Section 10 and 16.
+- **Hard exclusions, unchanged:** competitor sources (Silicon Data, Ornn, SemiAnalysis, Compute Exchange) and Entity List entities added by Federal Register Document 2026-23999 (effective 23 November 2026), matched by source id, display name and URL/domain only. SEA observations never set official v0 inclusion flags and never enter the NVIDIA composite or the MI300X sub-index.
+- **Currency:** settlement is in USD. Local-currency quotes are converted with the same daily FX source as v0 (ExchangeRate-API). The rates themselves are not published.
+- **Sources admitted on 2026-11-27 PT after a live fetch:** ACC Singapore; IP ServerOne NovaGPU and TeamCloud in Malaysia; Lintasarta Deka GPU and Biznet Gio NEO GPU in Indonesia; FPT AI Factory (public USD 1x H100 SXM5 list in the page's Southeast Asia region; FPT is Vietnam-headquartered; Japan-labelled H200 rows and Dedicated Inference prices are excluded). Lintasarta's H100 SXM5 rate has a 10-day minimum and is therefore observation-only. GreenNode (Vietnam) lists H100/H200 as "contact sales" and is not admitted. Viettel IDC, VNPT Cloud and CMC Cloud were reviewed; they do not currently publish a 1-GPU hourly rate for the basket models.
+
+### 17.2 Known limitations
+
+- Official market and cost legs are often empty: there is not yet a licensed SEA used-listing or new-card tape for these models. The basket often rests on the income approach.
+- Several model members have \(n < 3\) and are shown as "Insufficient samples". The basket NAV is published only when the small-sample back-out rule allows it.
+- Mixing H100, A100 and H200 in one regional basket is a disclosure choice for a single "Southeast Asia GPU" card; member rows are shown so the mix is visible. This is not comparable to a single-SKU NAV such as MI300X.
+- Income- and cost-approach parameters are still uncalibrated placeholders.
+
+---
 This document contains no forecast of future index levels and does not constitute investment, credit or valuation advice.

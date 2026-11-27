@@ -10,11 +10,15 @@ exists. Income and cost legs use clearly labeled to-be-calibrated placeholders.
 
 Usage:
     python3 /workspace/computenav/run_daily.py
+    python3 /workspace/computenav/run_daily.py --sea-trial
+    # SEA sub-index is off unless COMPUTENAV_ENABLE_SEA=1 and DATA_DIR is not
+    # the official /workspace/computenav tree (or COMPUTENAV_SEA_ALLOW_OFFICIAL=1).
 """
 
 from __future__ import annotations
 
 import csv
+from fractions import Fraction
 import hashlib
 import os
 import html as htmlmod
@@ -33,6 +37,8 @@ from datetime import datetime, timezone, date, timedelta, time as dt_time
 from pathlib import Path
 from typing import Any, Optional
 from zoneinfo import ZoneInfo
+
+import sea_index
 
 # CI hook (no-op by default): COMPUTENAV_DATA_DIR relocates all private outputs.
 ROOT = Path(os.environ.get("COMPUTENAV_DATA_DIR") or "/workspace/computenav")
@@ -104,10 +110,16 @@ OBSERVATION_ONLY_SOURCES = {
 
 # Publication guards: a single official-source outage must not move a published NAV.
 # MIN_LEG_SAMPLE_N is the *internal completeness* threshold (a leg is present when
-# n >= 1). It is not the public small-sample hide rule (MIN_SAMPLE_N = 3 in
-# export_public.py). H100 SXM typically has market_n=1 and cost_n=1 on a normal
-# day, so a threshold of 3 would treat every normal day as degraded.
+# n >= 1). It is not the public small-sample hide rule (MIN_SAMPLE_N below,
+# matching export_public.py). H100 SXM typically has market_n=1 and cost_n=1
+# on a normal day, so a threshold of 3 would treat every normal day as degraded.
 MIN_LEG_SAMPLE_N = 1
+# Public small-sample hide rule. Used only for log redaction here; internal
+# JSON / nav.db still store the full values. A method value with n < 3, any
+# NAV or composite that would let such a value be backed out, and the cost
+# anchor's new-card price must not appear in stdout / INFO / WARNING logs
+# (GitHub Actions logs of the public repo are world-readable).
+MIN_SAMPLE_N = 3
 # Day-over-day |ΔNAV| / prior NAV above this, coinciding with an official source
 # failure, is treated as a bad print and carried forward.
 JUMP_GUARD_PCT = 0.25
@@ -135,7 +147,16 @@ def mark_observation_only(row: dict) -> dict:
 
 
 def is_official(row: dict, flag: str) -> bool:
-    return bool(row.get(flag)) and row.get("source_id") not in OBSERVATION_ONLY_SOURCES
+    """Official v0 NVIDIA / MI300X legs. SEA rows are never official, even if a flag is set."""
+    if not row.get(flag):
+        return False
+    if row.get("source_id") in OBSERVATION_ONLY_SOURCES:
+        return False
+    if sea_index.is_sea_source_id(row.get("source_id")):
+        return False
+    if row.get("index_family") in {"sea", "sea_ushq_compare"}:
+        return False
+    return True
 
 
 # ---------------------------------------------------------------------------
@@ -165,6 +186,7 @@ COMPETITOR_EXCLUDED_SOURCES = {
     "semi_analysis": "SemiAnalysis — 竞品数据，禁止进入 NAV 计算或观察库。",
     # Silicon Data sister venue; market data is not licensed for index use.
     "compute_exchange": "Compute Exchange 为 Silicon Data 关联方，行情数据禁止进入 NAV 计算或观察库。",
+    "american_compute": "American Compute — 竞品数据，禁止进入 NAV 计算或观察库。",
 }
 
 COMPETITOR_EXCLUDED_DOMAINS = {
@@ -197,6 +219,8 @@ COMPETITOR_EXCLUDED_PATTERNS = (
      "SemiAnalysis — 竞品数据，禁止进入 NAV 计算或观察库。"),
     (re.compile(r"compute[\s._-]?exchange", re.I),
      "Compute Exchange 为 Silicon Data 关联方，行情数据禁止进入 NAV 计算或观察库。"),
+    (re.compile(r"\bamerican\s*compute\b", re.I),
+     "American Compute — 竞品数据，禁止进入 NAV 计算或观察库。"),
 )
 
 
@@ -315,6 +339,202 @@ MODEL_LABELS = {
     "MI300X": "AMD Instinct MI300X",
     "COMPOSITE": "综合（等权，待校准）",
 }
+
+# Log redaction: same small-sample / back-out rule as export_public.py.
+# Calculation results are not affected. Do not log new_card_usd at all.
+
+
+def _public_n(n) -> int:
+    try:
+        if n is None:
+            return 0
+        return int(n)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _leg_present_n(n) -> bool:
+    return _public_n(n) > 0
+
+
+def _leg_hidden_n(n) -> bool:
+    n_int = _public_n(n)
+    return n_int > 0 and n_int < MIN_SAMPLE_N
+
+
+def _mask_rank(rows):
+    m = [list(r) for r in rows]
+    rank, col, ncols = 0, 0, (len(m[0]) if m else 0)
+    while rank < len(m) and col < ncols:
+        piv = next((i for i in range(rank, len(m)) if m[i][col] != 0), None)
+        if piv is None:
+            col += 1
+            continue
+        m[rank], m[piv] = m[piv], m[rank]
+        for i in range(len(m)):
+            if i != rank and m[i][col] != 0:
+                f = m[i][col] / m[rank][col]
+                m[i] = [a - f * b for a, b in zip(m[i], m[rank])]
+        rank += 1
+        col += 1
+    return rank
+
+
+def _mask_identifiable(equations, n_unknowns):
+    """Indices of hidden legs uniquely determined by the given equations."""
+    if not equations:
+        return set()
+    base = _mask_rank(equations)
+    out = set()
+    for u in range(n_unknowns):
+        e = [Fraction(int(i == u)) for i in range(n_unknowns)]
+        if _mask_rank(equations + [e]) == base:
+            out.add(u)
+    return out
+
+
+def plan_public_log_masking(ns: dict, keys=None, with_composite: bool = True) -> dict:
+    """Decide which NAVs / composite may appear in logs.
+
+    ns: {model_key: {"market": n, "income": n, "cost": n}}. Same greedy
+    identifiability rule as export_public.plan_masking: a value is hidden
+    in logs if publishing it would uniquely reveal a method value with
+    n < MIN_SAMPLE_N.
+    """
+    model_keys = list(keys) if keys is not None else list(COMPOSITE_KEYS)
+    legs = ("market", "income", "cost")
+    unknowns = [(k, leg) for k in model_keys for leg in legs if _leg_hidden_n(ns.get(k, {}).get(leg))]
+    idx = {u: i for i, u in enumerate(unknowns)}
+    nu = len(unknowns)
+
+    def nav_row(k):
+        present = [leg for leg in legs if _leg_present_n((ns.get(k) or {}).get(leg))]
+        if not present:
+            return None
+        row = [Fraction(0)] * nu
+        for leg in present:
+            if (k, leg) in idx:
+                row[idx[(k, leg)]] += Fraction(1, len(present))
+        return row
+
+    rows = {k: nav_row(k) for k in model_keys}
+    nav_models = [k for k in model_keys if rows[k] is not None]
+    comp_row = None
+    if nav_models:
+        comp_row = [Fraction(0)] * nu
+        for k in nav_models:
+            comp_row = [a + b / len(nav_models) for a, b in zip(comp_row, rows[k])]
+
+    published, plan = [], {"nav": {}, "composite": None}
+    for k in model_keys:
+        r = rows[k]
+        if r is None:
+            plan["nav"][k] = "absent"
+        elif nu == 0 or not _mask_identifiable(published + [r], nu):
+            published.append(r)
+            plan["nav"][k] = "published"
+        else:
+            plan["nav"][k] = "hidden"
+    if not with_composite or comp_row is None:
+        plan["composite"] = "absent"
+    elif nu == 0 or not _mask_identifiable(published + [comp_row], nu):
+        published.append(comp_row)
+        plan["composite"] = "published"
+    else:
+        plan["composite"] = "hidden"
+    plan["hidden_legs"] = unknowns
+    return plan
+
+
+def _ns_from_models(models: dict) -> dict:
+    out = {}
+    for k, m in (models or {}).items():
+        if not isinstance(m, dict):
+            continue
+        if k == "COMPOSITE":
+            continue
+        out[k] = {
+            "market": _public_n(m.get("market_n")),
+            "income": _public_n(m.get("income_n")),
+            "cost": _public_n(m.get("cost_n")),
+        }
+    return out
+
+
+def _ns_from_index_rows(index_rows: list[dict]) -> dict:
+    return _ns_from_models({r["model_key"]: r for r in (index_rows or []) if r.get("model_key")})
+
+
+def _fmt_leg_for_log(value, n) -> str:
+    n_int = _public_n(n)
+    if n_int <= 0:
+        return "n=0"
+    if n_int < MIN_SAMPLE_N:
+        return f"hidden n={n_int}"
+    if value is None:
+        return f"n={n_int}"
+    return f"{round(float(value), 2)} n={n_int}"
+
+
+def _fmt_nav_for_log(value, status: str) -> str:
+    """raw_nav is never logged as a number (it is never public)."""
+    if status != "published" or value is None:
+        return "hidden"
+    return f"{round(float(value), 2)}"
+
+
+def public_log_nav_status(ns: dict) -> dict:
+    """Return {model_key: 'published'|'hidden'|'absent', 'COMPOSITE': ...}."""
+    members = [k for k in COMPOSITE_KEYS if k in ns]
+    plan = plan_public_log_masking({k: ns[k] for k in members}, keys=members, with_composite=True)
+    status = dict(plan["nav"])
+    status["COMPOSITE"] = plan["composite"] or "absent"
+    for k in ns:
+        if k in status or k == "COMPOSITE":
+            continue
+        sub = plan_public_log_masking({k: ns[k]}, keys=[k], with_composite=False)
+        status[k] = sub["nav"].get(k, "absent")
+    return status
+
+
+def log_index_summary(latest: dict, *, extra: str = "") -> None:
+    """INFO lines for model NAVs and the composite, redacted for public logs."""
+    models = latest.get("models") or {}
+    ns = _ns_from_models(models)
+    status = public_log_nav_status(ns)
+    if extra:
+        log.info(extra)
+    for k, v in models.items():
+        log.info(
+            "NAV %s: indicative=%s market=%s income=%s cost=%s",
+            k,
+            _fmt_nav_for_log(v.get("nav_indicative_usd"), status.get(k, "hidden")),
+            _fmt_leg_for_log(v.get("market_usd"), v.get("market_n")),
+            _fmt_leg_for_log(v.get("income_usd"), v.get("income_n")),
+            _fmt_leg_for_log(v.get("cost_usd"), v.get("cost_n")),
+        )
+    comp = latest.get("composite")
+    if comp:
+        log.info("COMPOSITE=%s", _fmt_nav_for_log(comp.get("nav_indicative_usd"), status.get("COMPOSITE", "hidden")))
+
+
+def log_carry_forward(key: str, raw_nav, published_nav, from_asof, reason, index_rows) -> None:
+    """WARNING carry-forward line: never print raw_nav; redact published NAV."""
+    ns = _ns_from_index_rows(index_rows)
+    status = public_log_nav_status(ns)
+    # raw_nav / raw_composite is never published; always hidden in logs.
+    pub = _fmt_nav_for_log(published_nav, status.get(key, "hidden"))
+    if key == "COMPOSITE":
+        log.warning(
+            "CARRY_FORWARD COMPOSITE raw_nav=hidden published_nav=%s (%s)",
+            pub, reason,
+        )
+    else:
+        log.warning(
+            "CARRY_FORWARD %s raw_nav=hidden published_nav=%s from %s (%s)",
+            key, pub, from_asof, reason,
+        )
+
 
 # Research collections (chip events, raw quotes, age). Not inputs to the v0 official NAV.
 PRICE_HISTORY_STARTS_PT = "2026-11-16"
@@ -625,6 +845,8 @@ def set_in_official_v0(row: dict) -> dict:
     official = (
         row.get("model_key") in OFFICIAL_INDEX_KEYS
         and row.get("source_id") not in OBSERVATION_ONLY_SOURCES
+        and not sea_index.is_sea_source_id(row.get("source_id"))
+        and row.get("index_family") not in {"sea", "sea_ushq_compare"}
         and (
             bool(row.get("include_in_market"))
             or bool(row.get("include_in_income"))
@@ -1028,7 +1250,7 @@ def backfill_from_snapshots(conn: sqlite3.Connection, run_id: str, fx: "FX") -> 
             updated += 1
 
     inserted = 0
-    for src in SOURCE_PLAN:
+    for src in active_source_plan():
         parser = src.get("parser")
         if not parser:
             continue
@@ -1066,6 +1288,8 @@ def backfill_from_snapshots(conn: sqlite3.Connection, run_id: str, fx: "FX") -> 
             mark_observation_only(row)
             set_in_official_v0(row)
             if competitor_exclusion_reason(row.get("source_id"), row.get("source_name"), row.get("source_url")):
+                continue
+            if sea_index.entity_list_exclusion_reason(row.get("source_id"), row.get("source_name"), row.get("source_url")):
                 continue
             insert_observations(conn, [row])
             by_key.setdefault(key, []).append(row)
@@ -1367,6 +1591,14 @@ def assign_model_key(row: dict) -> dict:
             key = "A100_40GB"
         elif vram == 80:
             key = "A100_80GB"
+    elif model == "H200":
+        # SEA regional layer. Not an official v0 NVIDIA composite key.
+        if form in {"NVL"}:
+            key = "H200_NVL"
+        elif form in {"SXM", "SXM5", "HGX", "NVLINK"}:
+            key = "H200_SXM"
+        else:
+            key = "H200"
     else:
         inst = detect_instinct_model(model) or detect_instinct_model(row.get("model") or "")
         if inst:
@@ -1375,7 +1607,7 @@ def assign_model_key(row: dict) -> dict:
             row["model"] = inst if not row.get("model") else row.get("model")
             if (row.get("model") or "").upper().replace(" ", "") != inst:
                 row["model"] = inst
-    if key in MODEL_KEYS or (row.get("model") or "").upper() in {"H100", "A100"}:
+    if key in MODEL_KEYS or (row.get("model") or "").upper() in {"H100", "A100", "H200"}:
         row["vendor"] = row.get("vendor") or "NVIDIA"
     row["model_key"] = key
     return row
@@ -2718,8 +2950,17 @@ SOURCE_PLAN = [
 ]
 
 
+def active_source_plan() -> list[dict]:
+    """Official SOURCE_PLAN, plus SEA sources only when the SEA trial is active for this ROOT."""
+    plan = list(SOURCE_PLAN)
+    if sea_index.sea_active_for_root(ROOT):
+        plan.extend(sea_index.SEA_SOURCE_PLAN)
+    return plan
+
+
 def compute_index(observations, asof_date_pt, computed_at_utc, computed_at_pt):
     observations = drop_competitor_observations(list(observations or []), context="compute_index")
+    observations = sea_index.drop_entity_list_observations(observations, context="compute_index")
     rows = []
     per_model = {}
     for key in OFFICIAL_INDEX_KEYS:
@@ -2808,6 +3049,8 @@ def official_contributor_ids() -> set[str]:
         if src.get("expect_block"):
             continue
         if competitor_exclusion_reason(sid, src.get("name"), src.get("url")):
+            continue
+        if sea_index.is_sea_source_id(sid) or sea_index.entity_list_exclusion_reason(sid, src.get("name"), src.get("url")):
             continue
         out.add(sid)
     return out
@@ -2972,9 +3215,9 @@ def apply_publication_guards(
         if reasons:
             _mark_carried(rec, prior, reasons, failed_ids)
             any_model_carried = True
-            log.warning(
-                "CARRY_FORWARD %s raw_nav=%s published_nav=%s from %s (%s)",
-                key, raw_nav, rec["nav_indicative_usd"], rec["carried_from_asof"], rec["carry_reason"],
+            log_carry_forward(
+                key, raw_nav, rec["nav_indicative_usd"],
+                rec["carried_from_asof"], rec["carry_reason"], index_rows,
             )
         by_key[key] = rec
 
@@ -3025,9 +3268,9 @@ def apply_publication_guards(
         if reasons and prior_c is not None:
             comp["breakdown_json"] = json.dumps(bd, ensure_ascii=False)
             _mark_carried(comp, prior_c, reasons, failed_ids)
-            log.warning(
-                "CARRY_FORWARD COMPOSITE raw_nav=%s published_nav=%s (%s)",
-                raw_comp, comp["nav_indicative_usd"], comp["carry_reason"],
+            log_carry_forward(
+                "COMPOSITE", raw_comp, comp["nav_indicative_usd"],
+                None, comp["carry_reason"], index_rows,
             )
         else:
             comp["breakdown_json"] = json.dumps(bd, ensure_ascii=False)
@@ -3103,12 +3346,40 @@ IDX_COLS = [
 ]
 
 
+SEA_OBS_COLS = [
+    "include_in_sea_income", "include_in_sea_market", "include_in_sea_cost",
+    "sea_index_key", "index_family",
+]
+
+
+def migrate_sea_schema(conn: sqlite3.Connection) -> None:
+    """Add SEA columns only on a SEA-active data tree. Official nav.db is not altered."""
+    existing = {r[1] for r in conn.execute("PRAGMA table_info(observations)").fetchall()}
+    col_sql = {
+        "include_in_sea_income": "INTEGER NOT NULL DEFAULT 0",
+        "include_in_sea_market": "INTEGER NOT NULL DEFAULT 0",
+        "include_in_sea_cost": "INTEGER NOT NULL DEFAULT 0",
+        "sea_index_key": "TEXT",
+        "index_family": "TEXT",
+    }
+    changed = False
+    for col, typ in col_sql.items():
+        if col not in existing:
+            conn.execute(f"ALTER TABLE observations ADD COLUMN {col} {typ}")
+            changed = True
+    if changed:
+        conn.commit()
+
+
 def insert_observations(conn, rows):
     rows = drop_competitor_observations(rows, context="insert_observations")
+    rows = sea_index.drop_entity_list_observations(rows, context="insert_observations")
     if not rows:
         return
-    q = "INSERT INTO observations (" + ",".join(OBS_COLS) + ") VALUES (" + ",".join(["?"] * len(OBS_COLS)) + ")"
-    conn.executemany(q, [[r.get(c) for c in OBS_COLS] for r in rows])
+    existing = {r[1] for r in conn.execute("PRAGMA table_info(observations)").fetchall()}
+    cols = list(OBS_COLS) + [c for c in SEA_OBS_COLS if c in existing]
+    q = "INSERT INTO observations (" + ",".join(cols) + ") VALUES (" + ",".join(["?"] * len(cols)) + ")"
+    conn.executemany(q, [[r.get(c) for c in cols] for r in rows])
 
 
 def upsert_index(conn, rows, health=None):
@@ -3301,6 +3572,435 @@ def write_outputs(conn, run_id, asof_date_pt, computed_at_pt, computed_at_utc, h
     return latest, history, dashboard
 
 
+
+OFFICIAL_ROOT = Path("/workspace/computenav")
+SEA_TRIAL_DEFAULT_DIR = Path("/workspace/computenav-sea-test")
+SEA_FX_CURRENCIES = ("SGD", "MYR", "IDR", "VND")
+SEA_TRIAL_FIXTURES = {
+    "acc_sg": "/tmp/sea_fetches/rental/acc.body",
+    "novagpu_my": "/tmp/sea_fetches/rental/novagpu.body",
+    "teamcloud_my": "/tmp/sea_fetches/rental/teamcloud.body",
+    "lintasarta_deka": "/tmp/sea_fetches/rental/lintasarta.body",
+    "biznet_neo": "/tmp/sea_fetches/rental/biznet_gpu.body",
+    "biznet_pricelist": "/tmp/sea_fetches/rental/biznet_price.body",
+    "siam_th": "/tmp/sea_fetches/rental/siam.body",
+    "syndrome_ag": "/tmp/sea_fetches/dealers/syndrome_h100.body",
+    "syndrome_ag_pcie": "/tmp/sea_fetches/dealers/syndrome_h100new.body",
+}
+
+
+def rebind_root(root: Path) -> None:
+    """Relocate all private outputs. Used by --sea-trial before any writes."""
+    global ROOT, SNAPSHOT_ROOT, OUTPUT_DIR, LOG_DIR, DB_PATH, HISTORY_PATH, LATEST_PATH, DASHBOARD_DATA_PATH
+    ROOT = Path(root)
+    SNAPSHOT_ROOT = ROOT / "snapshots"
+    OUTPUT_DIR = ROOT / "output"
+    LOG_DIR = ROOT / "logs"
+    DB_PATH = ROOT / "nav.db"
+    HISTORY_PATH = OUTPUT_DIR / "history.json"
+    LATEST_PATH = OUTPUT_DIR / "latest.json"
+    DASHBOARD_DATA_PATH = OUTPUT_DIR / "dashboard_data.json"
+
+
+def maybe_attach_sea_and_rewrite(latest, history, dashboard, observations, fx, asof_date_pt, computed_at_utc, computed_at_pt):
+    """Attach the SEA sub-index and rewrite JSON only when SEA is active for this ROOT.
+
+    Official /workspace/computenav output is never rewritten by this path unless
+    COMPUTENAV_SEA_ALLOW_OFFICIAL=1 (not used in the internal trial).
+    """
+    if not sea_index.sea_active_for_root(ROOT):
+        return latest, history, dashboard, None
+    sea = sea_index.compute_sea_index(
+        observations, asof_date_pt, computed_at_utc, computed_at_pt,
+        us_models=latest.get("models") or {},
+    )
+    latest = sea_index.attach_sea_to_latest(latest, sea)
+
+    def r4(v):
+        return None if v is None else round(float(v), 4)
+
+    fx_out = dict(latest.get("fx") or {})
+    for ccy in SEA_FX_CURRENCIES:
+        fx_out[f"usd_per_{ccy.lower()}"] = r4(fx.rate(ccy))
+        raw = (fx.raw_rates or {}).get(ccy)
+        fx_out[f"{ccy.lower()}_per_usd"] = r4(float(raw) if raw is not None else None)
+    latest["fx"] = fx_out
+    history = dict(history or {})
+    history["sea"] = {
+        "asof_date_pt": asof_date_pt,
+        "models": sea.get("models"),
+        "sample_counts": sea.get("sample_counts"),
+        "ushq_cloud_apac_comparison": sea.get("ushq_cloud_apac_comparison"),
+    }
+    dashboard = dict(dashboard or {})
+    dashboard["latest"] = latest
+    dashboard["history"] = history
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    LATEST_PATH.write_text(json.dumps(latest, indent=2, ensure_ascii=False))
+    HISTORY_PATH.write_text(json.dumps(history, indent=2, ensure_ascii=False))
+    DASHBOARD_DATA_PATH.write_text(json.dumps(dashboard, indent=2, ensure_ascii=False))
+    sea_index.log_sea_summary(sea)
+    return latest, history, dashboard, sea
+
+
+def _source_plan_fx_only_plus_sea() -> list[dict]:
+    fx_src = [s for s in SOURCE_PLAN if s["id"] == "fx_usd"]
+    return fx_src + list(sea_index.SEA_SOURCE_PLAN)
+
+
+def _load_official_latest() -> dict:
+    path = OFFICIAL_ROOT / "output" / "latest.json"
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _load_official_observations_readonly(run_id: str) -> list[dict]:
+    db = OFFICIAL_ROOT / "nav.db"
+    uri = f"file:{db}?mode=ro"
+    conn = sqlite3.connect(uri, uri=True)
+    conn.row_factory = sqlite3.Row
+    rows = [dict(r) for r in conn.execute(
+        "SELECT * FROM observations WHERE run_id=? ORDER BY id", (run_id,)
+    ).fetchall()]
+    conn.close()
+    return rows
+
+
+def _sha256_file(path: Path) -> Optional[str]:
+    if not path.exists():
+        return None
+    h = hashlib.sha256()
+    with path.open("rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def official_output_checksums() -> dict:
+    out = {}
+    for name in ("nav.db", "output/latest.json", "output/history.json", "output/dashboard_data.json"):
+        path = OFFICIAL_ROOT / name
+        st = path.stat() if path.exists() else None
+        out[name] = {
+            "sha256": _sha256_file(path),
+            "size": None if st is None else st.st_size,
+            "mtime": None if st is None else st.st_mtime,
+        }
+    return out
+
+
+def _fixture_rec(sid: str, url: str, path: str) -> Optional[dict]:
+    p = Path(path)
+    if not p.exists():
+        return None
+    body = p.read_bytes()
+    return {
+        "source_id": sid, "url": url, "method": "GET",
+        "ok": True, "status": 200, "error": "fixture: research fetch 2026-11-27 (live fetch failed or was not used)",
+        "body": body, "sha256": hashlib.sha256(body).hexdigest(),
+        "byte_count": len(body), "fetched_at_utc": iso(now_utc()),
+        "final_url": url, "fixture": True,
+    }
+
+
+def run_sea_trial() -> int:
+    """Internal SEA trial: fetch SEA+FX into a temp tree; official db is read-only.
+
+    Does not refetch official US sources (listing pages move). Official NAV
+    identity is checked by recomputing from the official run's observations
+    with and without the SEA rows.
+    """
+    os.environ["COMPUTENAV_ENABLE_SEA"] = "1"
+    if not os.environ.get("COMPUTENAV_DATA_DIR"):
+        rebind_root(SEA_TRIAL_DEFAULT_DIR)
+        os.environ["COMPUTENAV_DATA_DIR"] = str(SEA_TRIAL_DEFAULT_DIR)
+    if sea_index.is_official_data_tree(ROOT) and not sea_index.sea_allow_official_tree():
+        print("refusing SEA trial write into the official /workspace/computenav tree", file=sys.stderr)
+        return 2
+    if not sea_index.sea_active_for_root(ROOT):
+        print("SEA trial is not active for ROOT=%s" % ROOT, file=sys.stderr)
+        return 2
+
+    baseline_before = official_output_checksums()
+
+    SNAPSHOT_ROOT.mkdir(parents=True, exist_ok=True)
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    LOG_DIR.mkdir(parents=True, exist_ok=True)
+
+    start = now_utc()
+    start_pt = to_pt(start)
+    run_id = start_pt.strftime("%Y%m%dT%H%M%S") + "_PT_SEA_TRIAL"
+    asof_date_pt = start_pt.strftime("%Y-%m-%d")
+    run_dir = SNAPSHOT_ROOT / run_id
+    log_path = LOG_DIR / f"{run_id}.log"
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(message)s",
+        handlers=[logging.FileHandler(log_path, encoding="utf-8"), logging.StreamHandler(sys.stdout)],
+    )
+    log.info("SEA trial run_id=%s asof_date_pt=%s data_dir=%s", run_id, asof_date_pt, ROOT)
+
+    official_latest = _load_official_latest()
+    official_run_id = official_latest["run_id"]
+    official_asof = official_latest["asof_date_pt"]
+    official_obs = _load_official_observations_readonly(official_run_id)
+    log.info("loaded %s official observations from official nav.db run_id=%s asof=%s (read-only)",
+             len(official_obs), official_run_id, official_asof)
+
+    conn = connect_db()
+    migrate_sea_schema(conn)
+    sea_index.scrub_entity_list_rows_from_db(conn)
+    scrub_competitor_rows_from_db(conn)
+
+    fx = FX()
+    observations = []
+    health = []
+    skip = {x.strip() for x in os.environ.get("COMPUTENAV_SKIP_SOURCES", "").split(",") if x.strip()}
+    source_problems = []
+
+    for src in _source_plan_fx_only_plus_sea():
+        sid = src["id"]
+        competitor_reason = competitor_exclusion_reason(sid, src.get("name"), src.get("url"))
+        if competitor_reason:
+            log.error("COMPETITOR_EXCLUDED source %s — skipped: %s", sid, competitor_reason)
+            health.append({"source_id": sid, "url": src["url"], "ok": False, "skipped": True,
+                           "competitor_excluded": True, "http_status": None,
+                           "error": "COMPETITOR_EXCLUDED: " + competitor_reason,
+                           "observation_count": 0, "fetched_at_utc": None, "sha256": None})
+            source_problems.append({"source_id": sid, "url": src["url"], "problem": "competitor_excluded",
+                                    "detail": competitor_reason})
+            continue
+        el_reason = sea_index.entity_list_exclusion_reason(sid, src.get("name"), src.get("url"))
+        if el_reason:
+            log.error("ENTITY_LIST_EXCLUDED source %s — skipped: %s", sid, el_reason)
+            health.append({"source_id": sid, "url": src["url"], "ok": False, "skipped": True,
+                           "entity_list_excluded": True, "http_status": None,
+                           "error": "ENTITY_LIST_EXCLUDED: " + el_reason,
+                           "observation_count": 0, "fetched_at_utc": None, "sha256": None})
+            source_problems.append({"source_id": sid, "url": src["url"], "problem": "entity_list_excluded",
+                                    "detail": el_reason})
+            continue
+        if sid in skip:
+            log.info("%s skipped via COMPUTENAV_SKIP_SOURCES", sid)
+            continue
+        rec = {
+            "source_id": sid, "url": src["url"], "method": src.get("method", "GET"),
+            "ok": False, "status": None, "error": None, "body": b"", "sha256": None,
+            "byte_count": 0, "fetched_at_utc": iso(now_utc()),
+        }
+        n_obs = 0
+        used_fixture = False
+        try:
+            rec = fetch(
+                sid, src["url"], method=src.get("method", "GET"),
+                data=src.get("data"), headers=src.get("headers"),
+            )
+            live_ok = bool(rec.get("ok") and rec.get("body"))
+            live_status, live_error = rec.get("status"), rec.get("error")
+            if not live_ok and sid in SEA_TRIAL_FIXTURES:
+                fxrec = _fixture_rec(sid, src["url"], SEA_TRIAL_FIXTURES[sid])
+                if fxrec:
+                    rec = fxrec
+                    used_fixture = True
+                    source_problems.append({
+                        "source_id": sid, "url": src["url"],
+                        "problem": "live_fetch_failed_used_research_fixture",
+                        "http_status": live_status,
+                        "detail": f"Live fetch failed ({live_status} {live_error}). Parser ran on the 2026-11-27 research snapshot. Not a live quote.",
+                    })
+                    log.warning("%s: live fetch failed (%s); using 2026-11-27 research fixture", sid, live_status)
+            save_snapshot(run_dir, rec)
+            conn.execute(
+                "INSERT INTO snapshots (run_id,source_id,url,method,fetched_at_utc,http_status,ok,error,sha256,byte_count,path) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                (run_id, sid, rec.get("final_url") or rec["url"], rec["method"], rec["fetched_at_utc"],
+                 rec.get("status"), 1 if rec.get("ok") else 0, rec.get("error"), rec.get("sha256"),
+                 rec.get("byte_count"), rec.get("path")),
+            )
+            snap_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+            if sid == "fx_usd" and rec.get("ok"):
+                try:
+                    fx.load(rec)
+                    log.info(
+                        "FX loaded: 1 EUR=%s USD, 1 GBP=%s USD, 1 SGD=%s USD, 1 MYR=%s USD, 1 IDR=%s USD, 1 VND=%s USD, asof=%s",
+                        fx.rate("EUR"), fx.rate("GBP"), fx.rate("SGD"), fx.rate("MYR"),
+                        fx.rate("IDR"), fx.rate("VND"), fx.asof_utc,
+                    )
+                except Exception:
+                    log.exception("FX parse failed")
+                    rec["ok"] = False
+                    rec["error"] = (rec.get("error") or "") + " | FX parse failed"
+                    source_problems.append({"source_id": sid, "problem": "fx_parse_failed", "detail": rec.get("error")})
+            parser = src.get("parser")
+            if parser and rec.get("ok") and rec.get("body"):
+                try:
+                    rows = parser(rec, fx) or []
+                    for row in rows:
+                        row["run_id"] = run_id
+                        row["snapshot_id"] = snap_id
+                        row["snapshot_hash"] = rec.get("sha256")
+                        row["snapshot_path"] = rec.get("path")
+                        row["observed_at_utc"] = rec["fetched_at_utc"]
+                        row["asof_date_pt"] = asof_date_pt
+                        if not row.get("source_id"):
+                            row["source_id"] = sid
+                        if used_fixture:
+                            note = row.get("notes") or ""
+                            tag = "Research fixture 2026-11-27 used because live fetch failed; not a live quote."
+                            if tag not in note:
+                                row["notes"] = (note + " " + tag).strip()
+                        mark_observation_only(row)
+                        enrich_observation(row, snapshot_path=rec.get("path"))
+                    rows = drop_competitor_observations(rows, context=f"parse:{sid}")
+                    rows = sea_index.drop_entity_list_observations(rows, context=f"parse:{sid}")
+                    insert_observations(conn, rows)
+                    observations.extend(rows)
+                    n_obs = len(rows)
+                    log.info("%s: %s observations%s", sid, n_obs, " (research fixture)" if used_fixture else "")
+                    if n_obs == 0 and sid != "fx_usd":
+                        source_problems.append({"source_id": sid, "url": src["url"], "problem": "parsed_zero_observations",
+                                                "fixture": used_fixture})
+                except Exception:
+                    log.exception("parse failed for %s", sid)
+                    rec["error"] = (rec.get("error") or "") + f" | parse failed: {traceback.format_exc()[-400:]}"
+                    source_problems.append({"source_id": sid, "url": src["url"], "problem": "parse_failed",
+                                            "detail": rec.get("error")})
+            elif not rec.get("ok"):
+                log.warning("%s failed: %s %s", sid, rec.get("status"), rec.get("error"))
+                source_problems.append({"source_id": sid, "url": src["url"], "problem": "fetch_failed",
+                                        "http_status": rec.get("status"), "detail": rec.get("error")})
+            else:
+                log.info("%s fetched ok, no parser or empty body", sid)
+        except Exception:
+            log.exception("source %s crashed (continuing)", sid)
+            rec["error"] = traceback.format_exc()[-500:]
+            source_problems.append({"source_id": sid, "url": src["url"], "problem": "source_crashed",
+                                    "detail": rec.get("error")})
+        health.append({
+            "source_id": sid, "url": src["url"], "ok": bool(rec.get("ok")),
+            "http_status": rec.get("status"), "error": rec.get("error"),
+            "observation_count": n_obs, "fetched_at_utc": rec.get("fetched_at_utc"),
+            "sha256": rec.get("sha256"), "fixture": used_fixture,
+        })
+        conn.execute(
+            "INSERT INTO source_health (run_id,asof_date_pt,source_id,url,ok,http_status,error,observation_count,fetched_at_utc) "
+            "VALUES (?,?,?,?,?,?,?,?,?)",
+            (run_id, asof_date_pt, sid, src["url"], 1 if rec.get("ok") else 0, rec.get("status"),
+             rec.get("error"), n_obs, rec.get("fetched_at_utc")),
+        )
+        conn.commit()
+        time.sleep(0.15)
+
+    computed = now_utc()
+    computed_pt = to_pt(computed)
+    observations = drop_competitor_observations(observations, context="pre-compute")
+    observations = sea_index.drop_entity_list_observations(observations, context="pre-compute")
+
+    # Identity: official NVIDIA + MI300X + COMPOSITE must not move when SEA rows are added.
+    only_official = compute_index(official_obs, official_asof, iso(computed), iso(computed_pt))
+    mixed = compute_index(official_obs + observations, official_asof, iso(computed), iso(computed_pt))
+    t_only = sea_index.official_values_tuple(only_official)
+    t_mixed = sea_index.official_values_tuple(mixed)
+    official_unchanged_with_sea_rows = t_only == t_mixed
+    if official_unchanged_with_sea_rows:
+        log.info("IDENTITY OK: official NVIDIA/MI300X/COMPOSITE values are unchanged when SEA observations are added")
+    else:
+        log.error("IDENTITY FAIL: official values changed when SEA observations were added")
+
+    def _round_tuple(d):
+        out = {}
+        for k, v in (d or {}).items():
+            out[k] = {
+                "nav": None if v.get("nav") is None else round(float(v["nav"]), 2),
+                "market": None if v.get("market") is None else round(float(v["market"]), 2),
+                "income": None if v.get("income") is None else round(float(v["income"]), 2),
+                "cost": None if v.get("cost") is None else round(float(v["cost"]), 2),
+                "market_n": v.get("market_n"),
+                "income_n": v.get("income_n"),
+                "cost_n": v.get("cost_n"),
+                "rental_median": None if v.get("rental_median") is None else round(float(v["rental_median"]), 4),
+            }
+        return out
+
+    # Compare recomputed official values to the published official latest (2-decimal NAV).
+    published = {}
+    for k, item in (official_latest.get("models") or {}).items():
+        published[k] = {
+            "nav": item.get("nav_indicative_usd"),
+            "market": item.get("market_usd"),
+            "income": item.get("income_usd"),
+            "cost": item.get("cost_usd"),
+            "market_n": item.get("market_n"),
+            "income_n": item.get("income_n"),
+            "cost_n": item.get("cost_n"),
+            "rental_median": item.get("rental_median_usd_per_hour"),
+        }
+    comp = official_latest.get("composite") or {}
+    published["COMPOSITE"] = {
+        "nav": comp.get("nav_indicative_usd"),
+        "market": None, "income": None, "cost": None,
+        "market_n": None, "income_n": None, "cost_n": None, "rental_median": None,
+    }
+    vs_published = _round_tuple(t_only) == published
+
+    # Trial JSON: official models copied from the published official latest (no new official print).
+    latest = json.loads(json.dumps(official_latest))
+    latest["run_id"] = run_id
+    latest["computed_at_pt"] = iso(computed_pt)
+    latest["computed_at_utc"] = iso(computed)
+    latest["asof_date_pt"] = official_asof
+    latest["sea_trial"] = {
+        "status": "internal_trial",
+        "official_run_id": official_run_id,
+        "official_asof_date_pt": official_asof,
+        "official_values_unchanged_with_sea_rows": official_unchanged_with_sea_rows,
+        "recomputed_official_matches_published_latest": vs_published,
+        "note": "Official model values below are copied from the published official latest.json. SEA is attached as a separate_subindices family.",
+    }
+    history = {"generated_at_pt": iso(computed_pt), "series": {}, "dates": [official_asof], "sea_trial": True}
+    dashboard = {
+        "latest": latest,
+        "history": history,
+        "observations": [],
+        "methodology_page": METHODOLOGY_PAGE,
+        "disclaimer_zh": latest.get("disclaimer_zh"),
+        "title_zh": "ComputeNAV 指数看板（SEA 内部试算）",
+    }
+    latest, history, dashboard, sea = maybe_attach_sea_and_rewrite(
+        latest, history, dashboard, observations, fx, official_asof, iso(computed), iso(computed_pt)
+    )
+    conn.close()
+
+    baseline_after = official_output_checksums()
+    official_files_untouched = baseline_before == baseline_after
+    if official_files_untouched:
+        log.info("Official nav.db and output JSON checksums are unchanged after the SEA trial")
+    else:
+        log.error("Official output checksums changed — trial should not have written the official tree")
+
+    report = {
+        "run_id": run_id,
+        "asof_date_pt": official_asof,
+        "computed_at_pt": iso(computed_pt),
+        "data_dir": str(ROOT),
+        "official_run_id": official_run_id,
+        "official_values_unchanged_with_sea_rows": official_unchanged_with_sea_rows,
+        "recomputed_official_matches_published_latest": vs_published,
+        "official_files_untouched": official_files_untouched,
+        "official_checksums": baseline_after,
+        "recomputed_official": _round_tuple(t_only),
+        "sea": sea,
+        "source_health": health,
+        "source_problems": source_problems,
+        "sea_observation_count": len(observations),
+        "fx": latest.get("fx") if latest else None,
+    }
+    report_path = OUTPUT_DIR / "sea_trial_report.json"
+    report_path.write_text(json.dumps(report, indent=2, ensure_ascii=False, default=str))
+    log.info("wrote trial report %s", report_path)
+    log.info("wrote %s %s %s", LATEST_PATH, HISTORY_PATH, DASHBOARD_DATA_PATH)
+    return 0 if official_unchanged_with_sea_rows and official_files_untouched else 1
+
+
 def run():
     SNAPSHOT_ROOT.mkdir(parents=True, exist_ok=True)
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -3332,8 +4032,15 @@ def run():
     if already_removed:
         log.error("COMPETITOR_EXCLUDED: removed %s pre-existing observation(s) from nav.db before this run",
                   len(already_removed))
+    el_removed = sea_index.scrub_entity_list_rows_from_db(conn)
+    if el_removed:
+        log.error("ENTITY_LIST_EXCLUDED: removed %s pre-existing observation(s) from nav.db before this run",
+                  len(el_removed))
+    if sea_index.sea_active_for_root(ROOT):
+        migrate_sea_schema(conn)
+        log.info("SEA sub-index enabled for data dir %s", ROOT)
 
-    for src in SOURCE_PLAN:
+    for src in active_source_plan():
         sid = src["id"]
         competitor_reason = competitor_exclusion_reason(sid, src.get("name"), src.get("url"))
         if competitor_reason:
@@ -3350,6 +4057,24 @@ def run():
                 "VALUES (?,?,?,?,?,?,?,?,?)",
                 (run_id, asof_date_pt, sid, src["url"], 0, None,
                  "COMPETITOR_EXCLUDED: " + competitor_reason, 0, None),
+            )
+            conn.commit()
+            continue
+        el_reason = sea_index.entity_list_exclusion_reason(sid, src.get("name"), src.get("url"))
+        if el_reason:
+            log.error("ENTITY_LIST_EXCLUDED source %s url=%s — skipped (not fetched, not stored): %s",
+                      sid, src.get("url"), el_reason)
+            health.append({
+                "source_id": sid, "url": src["url"], "ok": False, "skipped": True,
+                "entity_list_excluded": True,
+                "http_status": None, "error": "ENTITY_LIST_EXCLUDED: " + el_reason,
+                "observation_count": 0, "fetched_at_utc": None, "sha256": None,
+            })
+            conn.execute(
+                "INSERT INTO source_health (run_id,asof_date_pt,source_id,url,ok,http_status,error,observation_count,fetched_at_utc) "
+                "VALUES (?,?,?,?,?,?,?,?,?)",
+                (run_id, asof_date_pt, sid, src["url"], 0, None,
+                 "ENTITY_LIST_EXCLUDED: " + el_reason, 0, None),
             )
             conn.commit()
             continue
@@ -3389,7 +4114,14 @@ def run():
             if sid == "fx_usd" and rec.get("ok"):
                 try:
                     fx.load(rec)
-                    log.info("FX loaded: 1 EUR=%s USD, 1 GBP=%s USD, asof=%s", fx.rate("EUR"), fx.rate("GBP"), fx.asof_utc)
+                    if sea_index.sea_active_for_root(ROOT):
+                        log.info(
+                            "FX loaded: 1 EUR=%s USD, 1 GBP=%s USD, 1 SGD=%s USD, 1 MYR=%s USD, 1 IDR=%s USD, 1 VND=%s USD, asof=%s",
+                            fx.rate("EUR"), fx.rate("GBP"), fx.rate("SGD"), fx.rate("MYR"),
+                            fx.rate("IDR"), fx.rate("VND"), fx.asof_utc,
+                        )
+                    else:
+                        log.info("FX loaded: 1 EUR=%s USD, 1 GBP=%s USD, asof=%s", fx.rate("EUR"), fx.rate("GBP"), fx.asof_utc)
                 except Exception:
                     log.exception("FX parse failed")
                     rec["ok"] = False
@@ -3410,6 +4142,7 @@ def run():
                         mark_observation_only(row)
                         enrich_observation(row, snapshot_path=rec.get("path"))
                     rows = drop_competitor_observations(rows, context=f"parse:{sid}")
+                    rows = sea_index.drop_entity_list_observations(rows, context=f"parse:{sid}")
                     insert_observations(conn, rows)
                     observations.extend(rows)
                     n_obs = len(rows)
@@ -3442,6 +4175,7 @@ def run():
     computed = now_utc()
     computed_pt = to_pt(computed)
     observations = drop_competitor_observations(observations, context="pre-compute")
+    observations = sea_index.drop_entity_list_observations(observations, context="pre-compute")
     index_rows = compute_index(observations, asof_date_pt, iso(computed), iso(computed_pt))
     index_rows = apply_publication_guards(conn, index_rows, health, asof_date_pt, run_id=run_id)
     wrote = upsert_index(conn, index_rows, health=health)
@@ -3455,16 +4189,15 @@ def run():
     latest, history, dashboard = write_outputs(
         conn, run_id, asof_date_pt, iso(computed_pt), iso(computed), health, observations, index_rows, fx
     )
+    latest, history, dashboard, _sea = maybe_attach_sea_and_rewrite(
+        latest, history, dashboard, observations, fx, asof_date_pt, iso(computed), iso(computed_pt)
+    )
     rq = export_raw_quotes(conn, asof_date_pt, run_id)
     ew = write_event_windows(conn, asof_date_pt)
     conn.close()
 
     log.info("sold_count=%s observations=%s", latest["sold_count_today"], latest["observation_count"])
-    for k, v in latest["models"].items():
-        log.info("NAV %s: indicative=%s market=%s income=%s cost=%s", k,
-                 v["nav_indicative_usd"], v["market_usd"], v["income_usd"], v["cost_usd"])
-    if latest["composite"]:
-        log.info("COMPOSITE=%s", latest["composite"]["nav_indicative_usd"])
+    log_index_summary(latest)
     log.info("wrote %s %s %s", LATEST_PATH, HISTORY_PATH, DASHBOARD_DATA_PATH)
     return 0
 
@@ -3513,6 +4246,12 @@ def recompute_from_run(run_id: str) -> int:
     if already_removed:
         log.error("COMPETITOR_EXCLUDED: removed %s pre-existing observation(s) from nav.db before recompute",
                   len(already_removed))
+    el_removed = sea_index.scrub_entity_list_rows_from_db(conn)
+    if el_removed:
+        log.error("ENTITY_LIST_EXCLUDED: removed %s pre-existing observation(s) from nav.db before recompute",
+                  len(el_removed))
+    if sea_index.sea_active_for_root(ROOT):
+        migrate_sea_schema(conn)
 
     raw_rows = [dict(r) for r in conn.execute(
         "SELECT * FROM observations WHERE run_id=? ORDER BY id", (run_id,)
@@ -3522,6 +4261,7 @@ def recompute_from_run(run_id: str) -> int:
         return 2
     asof_date_pt = raw_rows[0]["asof_date_pt"]
     raw_rows = drop_competitor_observations(raw_rows, context=f"recompute:{run_id}")
+    raw_rows = sea_index.drop_entity_list_observations(raw_rows, context=f"recompute:{run_id}")
     corrected = 0
     for row in raw_rows:
         before = (row.get("include_in_market"), row.get("include_in_income"), row.get("include_in_cost_new"))
@@ -3555,6 +4295,7 @@ def recompute_from_run(run_id: str) -> int:
         "SELECT * FROM observations WHERE run_id=? ORDER BY id", (run_id,)
     ).fetchall()]
     raw_rows = drop_competitor_observations(raw_rows, context=f"recompute-after-backfill:{run_id}")
+    raw_rows = sea_index.drop_entity_list_observations(raw_rows, context=f"recompute-after-backfill:{run_id}")
 
     health_rows = [dict(r) for r in conn.execute(
         "SELECT source_id, url, ok, http_status, error, observation_count, fetched_at_utc "
@@ -3597,16 +4338,15 @@ def recompute_from_run(run_id: str) -> int:
     latest, history, dashboard = write_outputs(
         conn, run_id, asof_date_pt, iso(computed_pt), iso(computed), health, raw_rows, index_rows, fx
     )
+    latest, history, dashboard, _sea = maybe_attach_sea_and_rewrite(
+        latest, history, dashboard, raw_rows, fx, asof_date_pt, iso(computed), iso(computed_pt)
+    )
     export_raw_quotes(conn, asof_date_pt, run_id)
     write_event_windows(conn, asof_date_pt)
     conn.close()
     log.info("sold_count=%s observations=%s official=%s", latest["sold_count_today"],
              latest["observation_count"], latest["official_observation_counts"])
-    for k, v in latest["models"].items():
-        log.info("NAV %s: indicative=%s market=%s income=%s cost=%s", k,
-                 v["nav_indicative_usd"], v["market_usd"], v["income_usd"], v["cost_usd"])
-    if latest["composite"]:
-        log.info("COMPOSITE=%s", latest["composite"]["nav_indicative_usd"])
+    log_index_summary(latest)
     log.info("wrote %s %s %s", LATEST_PATH, HISTORY_PATH, DASHBOARD_DATA_PATH)
     return 0
 
@@ -3619,7 +4359,17 @@ if __name__ == "__main__":
         metavar="RUN_ID",
         help="Recompute official NAV from a stored run (no fetch). Snapshots stay append-only.",
     )
+    parser.add_argument(
+        "--sea-trial",
+        action="store_true",
+        help=(
+            "Internal SEA trial: fetch SEA+FX into COMPUTENAV_DATA_DIR "
+            "(default /workspace/computenav-sea-test). Does not write official nav.db/output."
+        ),
+    )
     args = parser.parse_args()
     if args.recompute_from_run:
         sys.exit(recompute_from_run(args.recompute_from_run))
+    if args.sea_trial:
+        sys.exit(run_sea_trial())
     sys.exit(run())

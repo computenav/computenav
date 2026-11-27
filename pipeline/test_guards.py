@@ -381,3 +381,80 @@ class MI300XSubindexTests(unittest.TestCase):
         self.assertEqual(pub["separate_subindices"], [])
         H = ep.upsert_history(None, pub)
         self.assertNotIn("MI300X", H["series"])
+
+
+# ---------------------------------------------------------------------------
+# Southeast Asia basket: separate sub-index (methodology section 17)
+# ---------------------------------------------------------------------------
+
+class SEABasketTests(unittest.TestCase):
+    def _priv(self):
+        priv = _priv_fixture()
+        priv["models"]["SEA"] = {
+            "nav_indicative_usd": 20000.0, "market_usd": None, "income_usd": None, "cost_usd": None,
+            "market_n": 0, "income_n": 0, "cost_n": 0, "rental_median_usd_per_hour": None, "new_card_usd": None,
+            "quality_flag": "not_in_nvidia_composite;sea_regional_basket=SG_MY_ID_VN",
+            "breakdown": {"indicative_nav": {"legs_used": 0}},
+            "raw_nav_indicative_usd": 20000.0, "stale": False, "carried_forward": False,
+            "dod_excluded": False, "carry_reason": None, "carried_from_asof": None, "legs_present": 2,
+            "sea_countries": ["Singapore", "Malaysia", "Indonesia", "Vietnam"],
+            "sea_country_codes": ["SG", "MY", "ID", "VN"],
+            "sea_member_keys": list(ep.SEA_MEMBER_KEYS),
+            "sea_official_observation_counts": {"market": 0, "income": 5, "cost": 0},
+            "sea_source_ids": ["acc_sg", "fpt_vn"],
+            "sea_members": {
+                "H100_SXM": {"label": "H100 SXM", "regions": ["SG"], "sources": ["acc_sg"],
+                             "market_usd": None, "income_usd": 10000.0, "cost_usd": None,
+                             "nav_indicative_usd": 10000.0, "market_n": 0, "income_n": 2, "cost_n": 0,
+                             "rental_median_usd_per_hour": 1.11, "new_card_usd": None},
+                "H100_PCIe": {"label": "H100 PCIe", "regions": ["SG"], "sources": ["acc_sg"],
+                              "market_usd": None, "income_usd": None, "cost_usd": None,
+                              "nav_indicative_usd": None, "market_n": 0, "income_n": 0, "cost_n": 0,
+                              "rental_median_usd_per_hour": None, "new_card_usd": None},
+                "A100_80GB": {"label": "A100 80GB", "regions": [], "sources": [],
+                              "market_usd": None, "income_usd": None, "cost_usd": None,
+                              "nav_indicative_usd": None, "market_n": 0, "income_n": 0, "cost_n": 0,
+                              "rental_median_usd_per_hour": None, "new_card_usd": None},
+                "A100_40GB": {"label": "A100 40GB", "regions": [], "sources": [],
+                              "market_usd": None, "income_usd": None, "cost_usd": None,
+                              "nav_indicative_usd": None, "market_n": 0, "income_n": 0, "cost_n": 0,
+                              "rental_median_usd_per_hour": None, "new_card_usd": None},
+                "H200": {"label": "H200", "regions": ["MY", "ID"], "sources": ["novagpu_my", "teamcloud_my", "biznet_neo"],
+                         "market_usd": None, "income_usd": 30000.0, "cost_usd": None,
+                         "nav_indicative_usd": 30000.0, "market_n": 0, "income_n": 3, "cost_n": 0,
+                         "rental_median_usd_per_hour": 2.22, "new_card_usd": None},
+            },
+        }
+        bd = priv["composite"].setdefault("breakdown", {})
+        bd["excluded_subindices"] = ["MI300X", "SEA"]
+        return priv
+
+    def test_sea_basket_masked_and_separate(self):
+        pub = ep.build_latest(self._priv())
+        sea = pub["models"]["SEA"]
+        self.assertFalse(sea["in_composite"])
+        self.assertTrue(sea["separate_subindex"])
+        self.assertIn("SEA", pub["separate_subindices"])
+        self.assertNotIn("SEA", pub["composite"]["members"])
+        self.assertIn("SEA", pub["composite"]["excluded_subindices"])
+        # H100_SXM income n=2 is hidden; H200 n=3 is published; basket of members can be published
+        # (it does not uniquely reveal the one hidden member? Wait: only one hidden member NAV
+        # plus published H200 — publishing the basket would reveal the hidden H100_SXM NAV.)
+        h100 = sea["sea_members"]["H100_SXM"]
+        h200 = sea["sea_members"]["H200"]
+        self.assertTrue(h100["nav_hidden"])
+        self.assertIsNone(h100["income_usd"])
+        self.assertIsNone(h100["rental_median_usd_per_hour"])
+        self.assertFalse(h200["nav_hidden"])
+        self.assertEqual(h200["income_usd"], 30000.0)
+        self.assertTrue(sea["nav_hidden"])  # would reveal the single hidden member
+        self.assertIsNone(sea["nav_indicative_usd"])
+        blob = json.dumps(pub)
+        self.assertNotIn("10000.0", blob)
+        self.assertNotIn("1.11", blob)
+        self.assertIn("30000", blob)
+
+    def test_sea_does_not_enter_nvidia_composite(self):
+        pub = ep.build_latest(self._priv())
+        self.assertEqual(pub["composite"]["nav_indicative_usd"], 16436.03)
+        self.assertFalse(pub["composite"]["nav_hidden"])
